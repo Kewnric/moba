@@ -4,16 +4,20 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>JunglerOS - Tactical Draft Engine</title>
-    
+
     <!-- Tailwind CSS -->
     <script src="https://cdn.tailwindcss.com"></script>
-    
+
     <!-- React & ReactDOM -->
     <script crossorigin src="https://unpkg.com/react@18/umd/react.development.js"></script>
     <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.development.js"></script>
-    
+
     <!-- Babel Standalone -->
     <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+
+    <!-- Hero roster and draft logic (the same files the tests in tests/ run against) -->
+    <script src="heroes.js"></script>
+    <script src="engine.js"></script>
 
     <!-- Custom Styles -->
     <style>
@@ -25,19 +29,19 @@
         /* Hide Scrollbar but allow scrolling */
         .scrollbar-hide::-webkit-scrollbar { display: none; }
         .scrollbar-hide { -ms-overflow-style: none; scrollbar-width: none; }
-        
+
         @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
         @keyframes scaleUp { from { transform: scale(0.9); opacity: 0; } to { transform: scale(1); opacity: 1; } }
-        
+
         .animate-fadeIn { animation: fadeIn 0.3s ease-out; }
         .animate-scaleUp { animation: scaleUp 0.4s cubic-bezier(0.34, 1.56, 0.64, 1); }
-        
+
         .glass-panel {
             background: rgba(30, 41, 59, 0.7);
             backdrop-filter: blur(12px);
             border: 1px solid rgba(255, 255, 255, 0.05);
         }
-        
+
         .dragging-over {
             background-color: rgba(6, 182, 212, 0.1);
             border-color: rgba(6, 182, 212, 0.5);
@@ -49,6 +53,11 @@
 
     <script type="text/babel">
         const { useState, useEffect, useMemo, useCallback, useRef } = React;
+
+        if (!window.JunglerHeroes || !window.JunglerEngine) {
+            document.getElementById('root').innerHTML = '<div style="padding:40px;font-family:system-ui;color:#fca5a5">JunglerOS could not load heroes.js and engine.js. Keep both files in the same folder as mlbb2.html, then reload.</div>';
+            throw new Error('heroes.js or engine.js did not load');
+        }
 
         // --- ICONS ---
         const Icon = ({ path, size = 24, className = "" }) => (
@@ -78,40 +87,24 @@
         };
 
         // --- DATA ---
-        const HERO_ROLES = { ROAM: 'Roaming', GOLD: 'Gold Lane', EXP: 'Exp Lane', MID: 'Mid Lane', JUNGLE: 'Jungling' };
-        const RAW_HERO_DATA = {
-          [HERO_ROLES.ROAM]: ["Saber", "Tigreal", "Akai", "Franco", "Rafaela", "Minotaur", "Natalia", "Chou", "Johnson", "Estes", "Gatotkaca", "Grock", "Hylos", "Jawhead", "Angela", "Kaja", "Selena", "Belerick", "Minsitthar", "Khufra", "Carmilla", "Atlas", "Khaleed", "Mathilda", "Gloo", "Edith", "Floryn", "Chip", "Kalea", "Lolita", "Hilda", "Diggie"],
-          [HERO_ROLES.GOLD]: ["Miya", "Bruno", "Clint", "Layla", "Moskov", "Karrie", "Irithel", "Lesley", "Hanabi", "Claude", "Kimmy", "Harith", "Granger", "Wanwan", "Popol and Kupa", "Brody", "Beatrix", "Natan", "Melissa", "Ixia"],
-          [HERO_ROLES.EXP]: ["Balmond", "Alice", "Bane", "Zilong", "Freya", "Chou", "Sun", "Alpha", "Ruby", "Lapu-Lapu", "Gatotkaca", "Argus", "Jawhead", "Uranus", "Aldous", "Thamuz", "Minsitthar", "Badang", "Guinevere", "Esmeralda", "Terizla", "X.Borg", "Dyrroth", "Masha", "Silvanna", "Yu Zhong", "Benedetta", "Khaleed", "Paquito", "Gloo", "Phoveus", "Edith", "Yin", "Arlott", "Cici", "Lukas", "Hilda"],
-          [HERO_ROLES.MID]: ["Nana", "Eudora", "Gord", "Kagura", "Cyclops", "Aurora", "Odette", "Zhask", "Pharsa", "Valir", "Chang'e", "Selena", "Vale", "Lunox", "Kimmy", "Harith", "Kadita", "Faramis", "Lylia", "Cecilion", "Luo Yi", "Valentina", "Xavier", "Novaria", "Zhuxin", "Zetian", "Vexana", "Yve"],
-          [HERO_ROLES.JUNGLE]: ["Balmond", "Saber", "Alice", "Alucard", "Karina", "Bane", "Fanny", "Hayabusa", "Freya", "Natalia", "Sun", "Alpha", "Yi Sun-Shin", "Roger", "Harley", "Lancelot", "Helcurt", "Gusion", "Martis", "Leomord", "Hanzo", "Ling", "Dyrroth", "Baxia", "Popol and Kupa", "Barats", "Aulus", "Aamon", "Yin", "Julian", "Fredrinn", "Joy", "Nolan", "Suyou", "Lukas"]
-        };
+        const { HERO_ROLES, RAW_HERO_DATA, HERO_IMAGES } = window.JunglerHeroes;
+        const { TIER_WEIGHTS, buildHeroList, addToFirstEmptySlot, placeInSlot, moveSlot, rankJunglers, createSafeStorage } = window.JunglerEngine;
         const TIERS = ['S', 'A', 'B', 'C', 'D'];
-        const TIER_WEIGHTS = { S: 10, A: 7, B: 5, C: 3, D: 1 };
-        const TIER_COLORS = { S: 'bg-red-500', A: 'bg-orange-500', B: 'bg-yellow-500', C: 'bg-blue-500', D: 'bg-gray-500' };
+        const TIER_COLORS = { S: 'bg-red-500', A: 'bg-orange-500', B: 'bg-yellow-500', C: 'bg-blue-500', D: 'bg-gray-500', '?': 'bg-slate-600' };
+        const STORAGE_KEYS = { matchups: 'moba_matchup_data_v1', junglers: 'moba_jungler_list_v1', images: 'moba_custom_images_v1' };
 
-        const ALL_HEROES = [];
-        Object.entries(RAW_HERO_DATA).forEach(([role, names]) => {
-            names.forEach(name => {
-                if (!ALL_HEROES.find(h => h.name === name)) ALL_HEROES.push({ id: name, name, role });
-            });
-        });
-        ALL_HEROES.push({ id: 'Unpicked', name: 'Unpicked', role: 'Neutral' });
+        const ALL_HEROES = buildHeroList(RAW_HERO_DATA);
+        ALL_HEROES.push({ id: 'Unpicked', name: 'Unpicked', roles: [] });
 
         // --- UTILS ---
-        const getHeroSlug = (name) => {
-            if (name === 'Unpicked') return 'unpicked';
-            if (name === 'Yi Sun-Shin') return 'yi_sun-shin';
-            if (name === 'Popol and Kupa') return 'popol_and_kupa';
-            if (name === 'Chang\'e') return 'change';
-            return name.toLowerCase().replace(/[^a-z0-9]/g, '');
-        };
+        const isPlainObject = (value) => value !== null && typeof value === 'object' && !Array.isArray(value);
+        const isStringArray = (value) => Array.isArray(value) && value.every(item => typeof item === 'string');
+        const heroRoleLabel = (hero) => (hero && hero.roles ? hero.roles.join(' / ') : '');
 
         const getHeroImage = (name, customImages = {}) => {
             if (name === 'Unpicked') return null;
             if (customImages && customImages[name]) return customImages[name];
-            const slug = getHeroSlug(name);
-            return `https://raw.githubusercontent.com/akhmadfian/mobile-legends-hero-list/master/assets/images/heroes/${slug}.jpg`;
+            return HERO_IMAGES[name] || null;
         };
 
         const compressImage = (file, callback) => {
@@ -130,7 +123,61 @@
             };
         };
 
+        const downloadJson = (data, filename) => {
+            const blob = new Blob([JSON.stringify(data, null, 2)], {type: "application/json"});
+            const url = URL.createObjectURL(blob);
+            const link = document.createElement('a');
+            link.href = url;
+            link.download = filename;
+            document.body.appendChild(link); link.click(); document.body.removeChild(link); URL.revokeObjectURL(url);
+        };
+
+        // Copies every saved JunglerOS key exactly as stored, including unreadable backups.
+        const exportRawSaves = () => {
+            const raw = {};
+            try {
+                Object.values(STORAGE_KEYS).forEach(key => {
+                    [key, `${key}_corrupt_backup`].forEach(storedKey => {
+                        const value = window.localStorage.getItem(storedKey);
+                        if (value !== null) raw[storedKey] = value;
+                    });
+                });
+            } catch (error) {
+                raw.error = `Browser storage could not be read: ${error.message}`;
+            }
+            downloadJson(raw, `jungleros_raw_saves_${new Date().toISOString().slice(0,10)}.json`);
+        };
+
         // --- COMPONENTS ---
+
+        class ErrorBoundary extends React.Component {
+            constructor(props) {
+                super(props);
+                this.state = { error: null };
+            }
+            static getDerivedStateFromError(error) {
+                return { error };
+            }
+            componentDidCatch(error, info) {
+                console.error('JunglerOS crashed', error, info.componentStack);
+            }
+            render() {
+                if (!this.state.error) return this.props.children;
+                return (
+                    <div className="h-screen w-full flex items-center justify-center bg-[#0f172a] p-6">
+                        <div className="glass-panel rounded-2xl p-8 max-w-lg w-full">
+                            <h1 className="text-xl font-bold text-white mb-2">JunglerOS hit an error</h1>
+                            <p className="text-sm text-gray-400 mb-4">Your saved matchups are still in this browser. Export them first, then reload the page.</p>
+                            <pre className="text-xs text-red-300 bg-black/40 rounded p-3 mb-6 overflow-x-auto whitespace-pre-wrap">{String(this.state.error && this.state.error.message)}</pre>
+                            <div className="flex gap-3">
+                                <button onClick={exportRawSaves} className="px-4 py-2 rounded-lg bg-cyan-600 hover:bg-cyan-500 text-white text-sm font-bold">Export raw data</button>
+                                <button onClick={() => window.location.reload()} className="px-4 py-2 rounded-lg bg-slate-700 hover:bg-slate-600 text-white text-sm font-bold">Reload</button>
+                            </div>
+                        </div>
+                    </div>
+                );
+            }
+        }
 
         const GlobalTooltip = ({ content, x, y, visible }) => {
             if (!visible || !content) return null;
@@ -150,18 +197,18 @@
 
         const RadarChart = ({ heroes, onSelect, currentHero, page, setPage }) => {
             const size = 240; const center = size / 2; const radius = 75;
-            
+
             const pageSize = 6;
             const startIndex = page * pageSize;
             const endIndex = startIndex + pageSize;
-            
+
             const displayHeroes = [...heroes];
             // Ensure we have enough placeholders for current page
             while(displayHeroes.length < endIndex) displayHeroes.push({ name: `Alt ${displayHeroes.length + 1}`, score: 0, isPlaceholder: true });
-            
+
             const currentBatch = displayHeroes.slice(startIndex, endIndex);
             const maxScore = Math.max(...heroes.map(h => h.score)) || 1; // Max of ALL heroes for consistent scale
-            
+
             const getPoints = (dataVals, r) => dataVals.map((h, i) => {
                 const val = h.isPlaceholder ? 30 : (h.score / maxScore) * 100;
                 const angle = (Math.PI * 2 * i) / 6 - Math.PI / 2;
@@ -196,7 +243,7 @@
                                 <g key={i} onClick={() => !hero.isPlaceholder && onSelect(hero)} className={hero.isPlaceholder ? '' : 'cursor-pointer group'}>
                                     <circle cx={x} cy={y} r="20" fill="transparent" />
                                     <text x={x} y={y} fill={isSelected ? "#22d3ee" : (hero.isPlaceholder ? "#475569" : "#94a3b8")} fontSize={isSelected ? "11" : "9"} textAnchor="middle" dominantBaseline="middle" fontWeight="bold" className="transition-all duration-200 group-hover:fill-white group-hover:text-xs">{hero.name}</text>
-                                    {!hero.isPlaceholder && <text x={x} y={y+12} fill={isSelected ? "#22d3ee" : "#64748b"} fontSize="8" textAnchor="middle" dominantBaseline="middle">{hero.score}</text>}
+                                    {!hero.isPlaceholder && <text x={x} y={y+12} fill={isSelected ? "#22d3ee" : "#64748b"} fontSize="8" textAnchor="middle" dominantBaseline="middle">{hero.rated ? hero.score.toFixed(1) : '—'}</text>}
                                 </g>
                             );
                         })}
@@ -211,8 +258,10 @@
             const initials = isUnpicked ? '?' : name.substring(0, 2);
             const sizeClasses = { sm: 'w-10 h-10 text-xs', md: 'w-14 h-14 text-sm', lg: 'w-20 h-20 text-base', xl: 'w-24 h-24 text-xl' };
             const [imgError, setImgError] = useState(false);
-            
-            useEffect(() => { setImgError(false); }, [name]);
+            const imageSrc = getHeroImage(name, customImages);
+            const showImage = !isUnpicked && imageSrc && !imgError;
+
+            useEffect(() => { setImgError(false); }, [name, imageSrc]);
 
             const handleMouseEnter = (e) => {
                 if (showTooltip && !isUnpicked && setTooltip) {
@@ -231,8 +280,8 @@
             return (
                 <div className={`relative group flex flex-col items-center ${className}`} onMouseEnter={handleMouseEnter} onMouseLeave={handleMouseLeave}>
                     <div className={`${sizeClasses[size]} rounded-xl shadow-lg flex items-center justify-center font-bold text-white overflow-hidden bg-slate-800 border border-white/10 relative transition-all duration-200 group-hover:scale-110 group-hover:shadow-cyan-500/20 group-hover:border-white/30`}>
-                        {!isUnpicked && !imgError ? (<img src={getHeroImage(name, customImages)} alt={name} className="w-full h-full object-cover" onError={() => setImgError(true)} />) : (<span className="z-10">{initials}</span>)}
-                        {(isUnpicked || imgError) && <div className={`absolute inset-0 bg-gradient-to-br from-slate-700 to-slate-800`}></div>}
+                        {showImage ? (<img src={imageSrc} alt={name} className="w-full h-full object-cover" onError={() => setImgError(true)} />) : (<span className="z-10">{initials}</span>)}
+                        {!showImage && <div className={`absolute inset-0 bg-gradient-to-br from-slate-700 to-slate-800`}></div>}
                         <div className="absolute inset-0 bg-gradient-to-tr from-transparent via-white/10 to-transparent opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none" />
                     </div>
                     {onEditNote && !isUnpicked && (<button onClick={(e) => { e.stopPropagation(); onEditNote(); }} className="absolute -top-2 -right-2 z-20 bg-yellow-500 text-black p-1 rounded-full shadow-lg opacity-0 group-hover:opacity-100 transition-opacity hover:bg-yellow-400" title="Add Quick Tip"><Icons.Pencil size={10} /></button>)}
@@ -243,11 +292,11 @@
         // --- MAIN APP ---
 
         function App() {
-            const [view, setView] = useState('draft'); 
+            const [view, setView] = useState('draft');
             const [enemySlots, setEnemySlots] = useState([null, null, null, null, null]);
             const [selectedRoleFilter, setSelectedRoleFilter] = useState('All');
             const [draftSearch, setDraftSearch] = useState(''); // New search state
-            
+
             // Editor State
             const [editorJungler, setEditorJungler] = useState(null);
             const [editorSearch, setEditorSearch] = useState('');
@@ -262,32 +311,37 @@
             const [newJunglerName, setNewJunglerName] = useState('');
 
             // Asset State
-            const [customImages, setCustomImages] = useState({}); 
+            const [customImages, setCustomImages] = useState({});
             const [assetsSearch, setAssetsSearch] = useState('');
 
             const [isDragging, setIsDragging] = useState(false);
             const [draggingSource, setDraggingSource] = useState(null);
             const [matchupData, setMatchupData] = useState({});
             const fileInputRef = useRef(null);
-            
+
             // Visualization State
             const [viewedHero, setViewedHero] = useState(null);
             const [matrixPage, setMatrixPage] = useState(0); // New State for matrix pagination
-            
+
             const [tooltipState, setTooltipState] = useState({ visible: false, x: 0, y: 0, content: null });
+            const [storageWarning, setStorageWarning] = useState(null);
+
+            const storage = useMemo(() => createSafeStorage(() => window.localStorage, ({ action, key, error }) => {
+                console.warn(`JunglerOS could not ${action} "${key}"`, error);
+                setStorageWarning(action === 'write'
+                    ? "Your last change couldn't be saved because browser storage is full or blocked. Export a backup from Data Hub before closing this tab."
+                    : "Saved data couldn't be loaded, so defaults are showing. Nothing was deleted.");
+            }), []);
 
             useEffect(() => {
-                const savedData = localStorage.getItem('moba_matchup_data_v1');
-                if (savedData) setMatchupData(JSON.parse(savedData));
-                const savedList = localStorage.getItem('moba_jungler_list_v1');
-                if (savedList) setJunglerList(JSON.parse(savedList));
-                const savedImages = localStorage.getItem('moba_custom_images_v1');
-                if (savedImages) setCustomImages(JSON.parse(savedImages));
-            }, []);
+                setMatchupData(storage.read(STORAGE_KEYS.matchups, {}, isPlainObject));
+                setJunglerList(storage.read(STORAGE_KEYS.junglers, RAW_HERO_DATA[HERO_ROLES.JUNGLE], isStringArray));
+                setCustomImages(storage.read(STORAGE_KEYS.images, {}, isPlainObject));
+            }, [storage]);
 
-            const saveToStorage = (newData) => { setMatchupData(newData); localStorage.setItem('moba_matchup_data_v1', JSON.stringify(newData)); };
-            const saveJunglerList = (newList) => { setJunglerList(newList); localStorage.setItem('moba_jungler_list_v1', JSON.stringify(newList)); };
-            const saveCustomImages = (newImages) => { setCustomImages(newImages); localStorage.setItem('moba_custom_images_v1', JSON.stringify(newImages)); };
+            const saveToStorage = (newData) => { setMatchupData(newData); storage.write(STORAGE_KEYS.matchups, newData); };
+            const saveJunglerList = (newList) => { setJunglerList(newList); storage.write(STORAGE_KEYS.junglers, newList); };
+            const saveCustomImages = (newImages) => { setCustomImages(newImages); storage.write(STORAGE_KEYS.images, newImages); };
 
             const handleAddJungler = () => {
                 if (newJunglerName.trim() && !junglerList.includes(newJunglerName.trim())) {
@@ -319,45 +373,13 @@
                 }
             };
 
-            const sortedJunglers = useMemo(() => {
-                const filledSlotsCount = enemySlots.filter(s => s && s.name !== 'Unpicked').length;
-                const filledSlots = enemySlots.filter(s => s && s.name !== 'Unpicked');
-                
-                if (filledSlotsCount === 0) return [];
-                
-                const scores = junglerList.map(junglerName => {
-                    let totalScore = 0; 
-                    let matchupsKnown = 0;
-                    const junglerMatchups = matchupData[junglerName] || {};
-                    
-                    filledSlots.forEach(enemy => {
-                        const match = junglerMatchups[enemy.name];
-                        if (match) { 
-                            totalScore += TIER_WEIGHTS[match.tier]; 
-                            matchupsKnown++; 
-                        } else { 
-                            // Use average weight (B tier = 5) for unknown to avoid 0 score penalty but don't count as "known"
-                            totalScore += 5; 
-                        }
-                    });
-                    
-                    // Accurate Confidence: Percentage of filled slots we have data for
-                    const confidence = filledSlotsCount > 0 ? Math.round((matchupsKnown / filledSlotsCount) * 100) : 0;
-                    
-                    return { 
-                        name: junglerName, 
-                        score: totalScore, 
-                        matchupsKnown, 
-                        confidence, // New accurate confidence
-                        data: junglerMatchups 
-                    };
-                });
-                
-                scores.sort((a, b) => b.score - a.score);
-                return scores;
-            }, [enemySlots, matchupData, junglerList]);
+            const enemyNames = useMemo(() => enemySlots.filter(s => s && s.name !== 'Unpicked').map(s => s.name), [enemySlots]);
 
-            const priorityPick = sortedJunglers.length > 0 ? sortedJunglers[0] : null;
+            const { ranked: sortedJunglers, recommended: priorityPick } = useMemo(
+                () => rankJunglers(junglerList, enemyNames, matchupData),
+                [junglerList, enemyNames, matchupData]
+            );
+
             const currentDisplayHero = viewedHero || priorityPick;
             useEffect(() => { setViewedHero(null); setMatrixPage(0); }, [enemySlots]); // Reset view on lineup change
 
@@ -369,22 +391,17 @@
                 setIsDragging(true); setDraggingSource(source);
             };
             const handleDragEnd = () => { setIsDragging(false); setDraggingSource(null); };
-            
+
             const handleDropOnSlot = (e, index) => {
                 e.preventDefault();
                 const heroData = e.dataTransfer.getData('hero');
                 const source = e.dataTransfer.getData('source');
                 if (source === 'slot') {
-                    const oldIndex = parseInt(e.dataTransfer.getData('slotIndex'));
-                    const newSlots = [...enemySlots];
-                    const movedHero = newSlots[oldIndex];
-                    newSlots[oldIndex] = null; newSlots[index] = movedHero;
-                    setEnemySlots(newSlots);
-                } else if (source.includes('pool')) {
-                    if (!heroData) return;
-                    const newSlots = [...enemySlots];
-                    newSlots[index] = JSON.parse(heroData);
-                    setEnemySlots(newSlots);
+                    const oldIndex = parseInt(e.dataTransfer.getData('slotIndex'), 10);
+                    if (!Number.isNaN(oldIndex)) setEnemySlots(slots => moveSlot(slots, oldIndex, index));
+                } else if (source.includes('pool') && heroData) {
+                    const hero = JSON.parse(heroData);
+                    setEnemySlots(slots => placeInSlot(slots, index, hero));
                 }
                 handleDragEnd();
             };
@@ -431,12 +448,7 @@
 
             const handleExport = () => {
                 const exportData = { version: "1.3", timestamp: new Date().toISOString(), matchupData, junglerList, customImages };
-                const blob = new Blob([JSON.stringify(exportData, null, 2)], {type: "application/json"});
-                const url = URL.createObjectURL(blob);
-                const link = document.createElement('a');
-                link.href = url;
-                link.download = `jungleros_full_backup_${new Date().toISOString().slice(0,10)}.json`;
-                document.body.appendChild(link); link.click(); document.body.removeChild(link); URL.revokeObjectURL(url);
+                downloadJson(exportData, `jungleros_full_backup_${new Date().toISOString().slice(0,10)}.json`);
             };
 
             const handleImport = (e) => {
@@ -444,13 +456,13 @@
                 if (!file) return;
                 const reader = new FileReader();
                 reader.onload = (ev) => {
-                    try { 
+                    try {
                         const imported = JSON.parse(ev.target.result);
                         if (!imported.matchupData && !imported.junglerList) throw new Error("Invalid file");
                         if (imported.junglerList) saveJunglerList(imported.junglerList);
                         if (imported.matchupData) saveToStorage(imported.matchupData);
                         if (imported.customImages) saveCustomImages(imported.customImages);
-                        alert(`Restored: ${Object.keys(imported.customImages || {}).length} Assets, ${imported.junglerList?.length || 0} Junglers`); 
+                        alert(`Restored: ${Object.keys(imported.customImages || {}).length} Assets, ${imported.junglerList?.length || 0} Junglers`);
                     } catch { alert("Error parsing file."); }
                 };
                 reader.readAsText(file);
@@ -467,24 +479,17 @@
 
             // Handle clicking hero in pool to add to enemy slots
             const handlePoolHeroClick = (hero) => {
-                if (view === 'draft') {
-                    const firstEmptyIndex = enemySlots.indexOf(null);
-                    if (firstEmptyIndex !== -1) {
-                        const newSlots = [...enemySlots];
-                        newSlots[firstEmptyIndex] = hero;
-                        setEnemySlots(newSlots);
-                    }
-                }
+                if (view === 'draft') setEnemySlots(slots => addToFirstEmptySlot(slots, hero));
             };
 
             const renderHeroPool = (dragSource, filterRole, clickHandler = null) => {
                 let heroes = ALL_HEROES.filter(h => h.name !== 'Unpicked');
-                if (filterRole !== 'All') heroes = heroes.filter(h => h.role === filterRole);
+                if (filterRole !== 'All') heroes = heroes.filter(h => h.roles.includes(filterRole));
                 if (view === 'editor' && editorJungler && dragSource === 'unranked_pool') {
                     const ranked = matchupData[editorJungler] || {};
                     heroes = heroes.filter(h => !ranked[h.name]);
                 }
-                
+
                 // Search logic based on view
                 const searchTerm = view === 'draft' ? draftSearch : editorSearch;
                 if (searchTerm) heroes = heroes.filter(h => h.name.toLowerCase().includes(searchTerm.toLowerCase()));
@@ -494,11 +499,14 @@
                         {heroes.map(hero => {
                             let quickNote = null;
                             if (editorJungler) { quickNote = matchupData[editorJungler]?.[hero.name]?.quickNote; }
+                            const isPicked = dragSource === 'draft_pool' && enemyNames.includes(hero.name);
                             return (
-                                <div key={hero.name} draggable onDragStart={(e) => handleDragStart(e, hero, dragSource)} onDragEnd={handleDragEnd}
-                                    onClick={() => clickHandler ? clickHandler(hero) : null}
-                                    className={`cursor-grab active:cursor-grabbing rounded-xl bg-slate-800/50 p-2 border border-white/5 hover:bg-slate-700 transition-all ${activeQuickRankTier && view === 'editor' && dragSource === 'unranked_pool' ? 'ring-2 ring-yellow-400 bg-yellow-400/10' : ''}`}>
-                                    <HeroAvatar name={hero.name} role={hero.role} size="sm" showTooltip={true} quickNote={quickNote} onEditNote={view === 'editor' && editorJungler ? () => { setEditingQuickNoteHero(hero.name); setQuickNoteText(quickNote || ''); } : null} customImages={customImages} setTooltip={setTooltipState} />
+                                <div key={hero.name} draggable={!isPicked} onDragStart={(e) => handleDragStart(e, hero, dragSource)} onDragEnd={handleDragEnd}
+                                    onClick={() => clickHandler && !isPicked ? clickHandler(hero) : null}
+                                    title={isPicked ? `${hero.name} is already in the enemy lineup` : undefined}
+                                    className={`relative rounded-xl bg-slate-800/50 p-2 border border-white/5 transition-all ${isPicked ? 'opacity-40 cursor-not-allowed' : 'cursor-grab active:cursor-grabbing hover:bg-slate-700'} ${activeQuickRankTier && view === 'editor' && dragSource === 'unranked_pool' ? 'ring-2 ring-yellow-400 bg-yellow-400/10' : ''}`}>
+                                    {isPicked && <span className="absolute top-1 left-1/2 -translate-x-1/2 z-30 text-[8px] font-bold uppercase tracking-wider text-red-300 bg-black/80 px-1 rounded">Picked</span>}
+                                    <HeroAvatar name={hero.name} role={heroRoleLabel(hero)} size="sm" showTooltip={true} quickNote={quickNote} onEditNote={view === 'editor' && editorJungler ? () => { setEditingQuickNoteHero(hero.name); setQuickNoteText(quickNote || ''); } : null} customImages={customImages} setTooltip={setTooltipState} />
                                     <div className="text-[10px] text-gray-400 text-center mt-1 truncate w-full">{hero.name}</div>
                                 </div>
                             );
@@ -506,6 +514,8 @@
                     </div>
                 );
             };
+
+            const ratedOptions = sortedJunglers.filter(j => j.rated > 0).slice(0, 3);
 
             return (
                 <div className="h-screen w-full flex flex-col bg-[#0f172a] text-gray-100">
@@ -523,6 +533,13 @@
                             <button onClick={() => setView('data')} className={`px-5 py-2 rounded-md text-xs font-bold uppercase tracking-wide transition-all flex items-center gap-2 ${view === 'data' ? 'bg-emerald-600 text-white shadow-lg' : 'text-gray-400 hover:text-white'}`}><Icons.Database size={14} /> Data Hub</button>
                         </div>
                     </nav>
+
+                    {storageWarning && (
+                        <div role="alert" className="shrink-0 bg-amber-500/10 border-b border-amber-500/30 text-amber-200 text-xs px-8 py-2 flex items-center justify-between gap-4">
+                            <span className="flex items-center gap-2"><Icons.Info size={14} /> {storageWarning}</span>
+                            <button onClick={() => setStorageWarning(null)} className="text-amber-300 hover:text-white font-bold uppercase tracking-wide">Dismiss</button>
+                        </div>
+                    )}
 
                     <main className="flex-1 flex overflow-hidden relative">
                         {view === 'draft' && (
@@ -552,7 +569,7 @@
                                                     className={`aspect-[3/4] relative rounded-xl border-2 transition-all duration-300 flex flex-col items-center justify-center group cursor-pointer ${hero && hero.name !== 'Unpicked' ? 'bg-slate-800 border-red-500/50 shadow-[0_0_15px_rgba(239,68,68,0.2)] hover:border-red-400' : 'bg-slate-900/40 border-white/5 border-dashed hover:border-white/20'}`}>
                                                     {hero ? (
                                                         <>
-                                                            <HeroAvatar name={hero.name} role={hero.role} size="lg" showTooltip={true} className="scale-110" customImages={customImages} setTooltip={setTooltipState} />
+                                                            <HeroAvatar name={hero.name} role={heroRoleLabel(hero)} size="lg" showTooltip={true} className="scale-110" customImages={customImages} setTooltip={setTooltipState} />
                                                             <div className="mt-4 text-center"><div className="text-sm font-bold text-white">{hero.name}</div></div>
                                                         </>
                                                     ) : (<div className="text-white/10 flex flex-col items-center"><span className="text-4xl font-thin mb-2">+</span></div>)}
@@ -565,20 +582,21 @@
                                         {currentDisplayHero ? (
                                             <div className="flex items-center gap-12 animate-scaleUp">
                                                 <div className="flex-1">
-                                                    <div className="flex items-center gap-2 text-cyan-400 mb-2"><Icons.Crown size={18} /><span className="text-xs font-bold uppercase tracking-widest">{viewedHero ? 'Alternative Option' : 'Recommended Priority'}</span></div>
+                                                    <div className="flex items-center gap-2 text-cyan-400 mb-2"><Icons.Crown size={18} /><span className="text-xs font-bold uppercase tracking-widest">{viewedHero ? 'Alternative Option' : (currentDisplayHero.score >= TIER_WEIGHTS.B ? 'Recommended Priority' : 'Best Rated Option · Unfavored')}</span></div>
                                                     <h1 className="text-5xl font-black text-white mb-4 tracking-tight">{currentDisplayHero.name}</h1>
                                                     <div className="grid grid-cols-2 gap-4 mb-6">
-                                                        <div className="bg-slate-800/50 p-3 rounded border border-white/5"><div className="text-[10px] text-gray-400 uppercase">Score</div><div className="text-2xl font-mono font-bold text-cyan-400">{currentDisplayHero.score}</div></div>
-                                                        <div className="bg-slate-800/50 p-3 rounded border border-white/5"><div className="text-[10px] text-gray-400 uppercase">Confidence</div><div className="text-2xl font-mono font-bold text-green-400">{currentDisplayHero.confidence}%</div></div>
+                                                        <div className="bg-slate-800/50 p-3 rounded border border-white/5"><div className="text-[10px] text-gray-400 uppercase">Score</div><div className="text-2xl font-mono font-bold text-cyan-400">{currentDisplayHero.score.toFixed(1)}<span className="text-xs text-gray-500"> / 10</span></div></div>
+                                                        <div className="bg-slate-800/50 p-3 rounded border border-white/5"><div className="text-[10px] text-gray-400 uppercase">Matchups Rated</div><div className="text-2xl font-mono font-bold text-green-400">{currentDisplayHero.rated}<span className="text-xs text-gray-500"> / {currentDisplayHero.total}</span></div></div>
                                                     </div>
-                                                    {viewedHero && <button onClick={() => setViewedHero(null)} className="text-xs text-cyan-400 hover:underline mb-2 block">&larr; Return to #1 Pick</button>}
+                                                    {viewedHero && <button onClick={() => setViewedHero(null)} className="text-xs text-cyan-400 hover:underline mb-2 block">&larr; {priorityPick ? 'Return to #1 Pick' : 'Back to options'}</button>}
                                                     <div className="flex gap-2 overflow-x-auto pb-2 scrollbar-hide">
                                                         {enemySlots.filter(e => e && e.name !== 'Unpicked').map(enemy => {
-                                                            const m = currentDisplayHero.data[enemy.name] || { tier: 'B' };
-                                                            const qNote = m.quickNote;
+                                                            const m = currentDisplayHero.data[enemy.name];
+                                                            const tier = m && TIER_WEIGHTS[m.tier] ? m.tier : '?';
+                                                            const qNote = m && m.quickNote;
                                                             return (
                                                                 <div key={enemy.name} className="group relative flex items-center gap-2 bg-black/30 px-3 py-1 rounded border border-white/5">
-                                                                    <span className="text-[10px] text-gray-400">vs {enemy.name}</span><span className={`text-[10px] font-bold px-1.5 rounded ${TIER_COLORS[m.tier]} text-white`}>{m.tier}</span>
+                                                                    <span className="text-[10px] text-gray-400">vs {enemy.name}</span><span title={tier === '?' ? 'Not rated yet' : undefined} className={`text-[10px] font-bold px-1.5 rounded ${TIER_COLORS[tier]} text-white`}>{tier}</span>
                                                                     {qNote && <div className="absolute bottom-full mb-1 left-1/2 -translate-x-1/2 bg-black text-yellow-300 text-[9px] p-1 rounded opacity-0 group-hover:opacity-100 whitespace-nowrap z-10 pointer-events-none border border-yellow-500/50">{qNote}</div>}
                                                                 </div>
                                                             )
@@ -590,6 +608,23 @@
                                                     <RadarChart heroes={sortedJunglers} currentHero={currentDisplayHero} onSelect={setViewedHero} page={matrixPage} setPage={setMatrixPage} />
                                                 </div>
                                                 <div className="relative"><div className="absolute inset-0 bg-cyan-500 blur-[60px] opacity-20 rounded-full"></div><HeroAvatar name={currentDisplayHero.name} role={HERO_ROLES.JUNGLE} size="xl" showTooltip={false} className="scale-125 border-4 border-cyan-500/30 rounded-2xl" customImages={customImages} setTooltip={setTooltipState} /></div>
+                                            </div>
+                                        ) : enemyNames.length > 0 ? (
+                                            <div className="animate-scaleUp">
+                                                <div className="flex items-center gap-2 text-amber-400 mb-2"><Icons.Info size={18} /><span className="text-xs font-bold uppercase tracking-widest">Not enough ratings</span></div>
+                                                <h2 className="text-2xl font-bold text-white mb-2">{ratedOptions.length ? 'No jungler is rated against enough of this lineup yet' : 'None of your junglers are rated against this lineup yet'}</h2>
+                                                <p className="text-sm text-gray-400 mb-6 max-w-xl">A jungler is recommended once it's rated against at least half of the enemies you've entered. Rate matchups in Database to get a pick.</p>
+                                                {ratedOptions.length > 0 && (
+                                                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-6">
+                                                        {ratedOptions.map(option => (
+                                                            <button key={option.name} onClick={() => setViewedHero(option)} className="bg-slate-800/50 p-4 rounded-xl border border-white/5 hover:border-cyan-500/50 flex items-center gap-3 text-left transition-colors">
+                                                                <HeroAvatar name={option.name} role={HERO_ROLES.JUNGLE} size="sm" showTooltip={false} customImages={customImages} />
+                                                                <div><div className="text-sm font-bold text-white">{option.name}</div><div className="text-[11px] text-gray-400 font-mono">{option.score.toFixed(1)} · rated {option.rated}/{option.total}</div></div>
+                                                            </button>
+                                                        ))}
+                                                    </div>
+                                                )}
+                                                <button onClick={() => setView('editor')} className="px-4 py-2 rounded-lg bg-purple-600 hover:bg-purple-500 text-white text-xs font-bold uppercase tracking-wide shadow-lg">Rate matchups in Database</button>
                                             </div>
                                         ) : (<div className="flex flex-col items-center justify-center py-12 text-gray-500"><Icons.Target size={24} className="mb-4 opacity-50"/><div className="text-sm font-bold uppercase tracking-widest">Awaiting Enemy Data...</div></div>)}
                                     </div>
@@ -661,7 +696,7 @@
                                     <div className="grid grid-cols-4 md:grid-cols-6 lg:grid-cols-8 gap-4">
                                         {ALL_HEROES.filter(h => h.name !== 'Unpicked' && h.name.toLowerCase().includes(assetsSearch.toLowerCase())).map(hero => (
                                             <label key={hero.name} className="relative group cursor-pointer">
-                                                <HeroAvatar name={hero.name} role={hero.role} size="lg" showTooltip={false} customImages={customImages} />
+                                                <HeroAvatar name={hero.name} role={heroRoleLabel(hero)} size="lg" showTooltip={false} customImages={customImages} />
                                                 <div className="absolute inset-0 bg-black/60 opacity-0 group-hover:opacity-100 flex items-center justify-center transition-opacity rounded-xl">
                                                     <Icons.Upload className="text-white" size={24} />
                                                 </div>
@@ -704,7 +739,7 @@
                             </div>
                         )}
                     </main>
-                    
+
                     {/* TACTICAL NOTE MODAL (Long Comment) */}
                     {editingCommentHero && (
                         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-sm animate-fadeIn">
@@ -745,7 +780,7 @@
         }
 
         const root = ReactDOM.createRoot(document.getElementById('root'));
-        root.render(<App />);
+        root.render(<ErrorBoundary><App /></ErrorBoundary>);
     </script>
 </body>
 </html>

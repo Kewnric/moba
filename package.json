@@ -1,0 +1,8 @@
+{
+  "name": "jungleros",
+  "private": true,
+  "description": "MLBB draft assistant that recommends a jungler for the current matchup",
+  "scripts": {
+    "test": "node --test \"tests/*.test.js\""
+  }
+}
