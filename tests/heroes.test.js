@@ -1,7 +1,7 @@
-const test = require('node:test');
-const assert = require('node:assert/strict');
-const { HERO_ROLES, RAW_HERO_DATA, HERO_IMAGES } = require('../heroes.js');
-const { buildHeroList } = require('../engine.js');
+import { test } from 'vitest';
+import assert from 'node:assert/strict';
+import { HERO_ROLES, RAW_HERO_DATA, HERO_IMAGES } from '../src/data/heroes.js';
+import { buildHeroList } from '../src/lib/engine.js';
 
 const heroes = buildHeroList(RAW_HERO_DATA);
 const byName = Object.fromEntries(heroes.map((hero) => [hero.name, hero]));
