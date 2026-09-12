@@ -1,0 +1,3 @@
+# Keep LF line endings in every checkout. On Windows, CRLF source files change the bundled
+# index.html, which then no longer matches the build CI makes on Linux.
+* text=auto eol=lf

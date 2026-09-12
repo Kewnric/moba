@@ -41,7 +41,7 @@ export default function HeroAvatar({ heroId, size = 'md', className = '', showTo
                 {!showImage && <div className="absolute inset-0 bg-gradient-to-br from-slate-700 to-slate-800"></div>}
                 <div className="absolute inset-0 bg-gradient-to-tr from-transparent via-white/10 to-transparent opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none" />
             </div>
-            {onEditNote && (<button onClick={(e) => { e.stopPropagation(); onEditNote(); }} className="absolute -top-2 -right-2 z-20 bg-yellow-500 text-black p-1 rounded-full shadow-lg opacity-0 group-hover:opacity-100 transition-opacity hover:bg-yellow-400" title="Add Quick Tip"><Icons.Pencil size={10} /></button>)}
+            {onEditNote && (<button onClick={(e) => { e.stopPropagation(); onEditNote(); }} className="absolute -top-2 -right-2 z-20 bg-yellow-500 text-black p-1 rounded-full shadow-lg transition-opacity hover:bg-yellow-400 [@media(hover:hover)]:opacity-0 [@media(hover:hover)]:group-hover:opacity-100" title="Add Quick Tip"><Icons.Pencil size={10} /></button>)}
         </div>
     );
 }

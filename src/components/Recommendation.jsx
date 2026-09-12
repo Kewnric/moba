@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { TIER_COLORS } from '../data/tiers.js';
+import { TIER_COLORS, TIER_LABELS } from '../data/tiers.js';
 import { TIER_WEIGHTS, isTier } from '../lib/engine.js';
 import { Icons } from './Icons.jsx';
 import HeroAvatar, { heroName } from './HeroAvatar.jsx';
@@ -49,7 +49,7 @@ export default function Recommendation({ enemyIds, sortedJunglers, priorityPick,
                             return (
                                 <div key={enemyId} className="shrink-0 flex items-center gap-2 bg-black/30 px-2.5 py-1 rounded border border-white/5">
                                     <span className="text-[10px] text-gray-400 whitespace-nowrap">vs {heroName(enemyId)}</span>
-                                    <span title={tier === '?' ? 'Not rated yet' : undefined} className={`text-[10px] font-bold px-1.5 rounded ${TIER_COLORS[tier]} text-white`}>{tier}</span>
+                                    <span title={tier === '?' ? 'Not rated yet' : TIER_LABELS[tier]} className={`text-[10px] font-bold px-1.5 rounded ${TIER_COLORS[tier]} text-white`}>{tier}</span>
                                     {entry && entry.quickNote && <span className="text-[10px] text-yellow-300 italic whitespace-nowrap max-w-[160px] truncate">{entry.quickNote}</span>}
                                 </div>
                             );

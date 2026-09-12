@@ -158,7 +158,7 @@ export default function App() {
                 </div>
                 <div className="flex bg-slate-800 p-1 rounded-lg overflow-x-auto scrollbar-hide">
                     {NAV_TABS.map(({ id, label, shortLabel, icon: TabIcon, activeClass }) => (
-                        <button key={id} type="button" aria-current={view === id ? 'page' : undefined} onClick={() => setView(id)} className={`shrink-0 px-3 lg:px-5 py-2 rounded-md text-[11px] lg:text-xs font-bold uppercase tracking-wide transition-all flex items-center gap-1.5 lg:gap-2 ${view === id ? `${activeClass} text-white shadow-lg` : 'text-gray-400 hover:text-white'}`}>
+                        <button key={id} type="button" aria-current={view === id ? 'page' : undefined} onClick={() => setView(id)} className={`shrink-0 px-2 sm:px-3 lg:px-5 py-2 rounded-md text-[11px] lg:text-xs font-bold uppercase tracking-wide transition-all flex items-center gap-1 sm:gap-1.5 lg:gap-2 ${view === id ? `${activeClass} text-white shadow-lg` : 'text-gray-400 hover:text-white'}`}>
                             <TabIcon size={14} /><span className="lg:hidden">{shortLabel}</span><span className="hidden lg:inline">{label}</span>
                         </button>
                     ))}

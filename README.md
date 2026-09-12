@@ -7,6 +7,15 @@ A Mobile Legends: Bang Bang draft helper for junglers. Enter the enemy lineup, r
 - **Online:** https://kewnric.github.io/moba/
 - **Offline:** open `index.html` from this folder. It's a single self-contained file; hero portraits still need an internet connection.
 
+## Using the draft board
+
+- Tap a slot, then tap a hero. You can also type a name and press Enter to add the top match.
+- The highlighted slot moves on in ranked draft order: bans alternate starting with the team that picks first, picks go 1-2-2-2-2-1, and with more than three bans per team the extra bans come after the first six picks. You don't have to enter bans; they're skipped once picks move past them.
+- **Settings** sets who picks first and how many bans each team gets.
+- Each enemy's lane is guessed automatically. Change it with the menu under their slot.
+- **Undo** reverses the last change and **New** starts a fresh draft. A refresh keeps the draft in the same tab.
+- Recommendations never include heroes that either team picked or banned.
+
 ## Develop
 
 ```bash
@@ -42,7 +51,7 @@ Needs Node 22 or newer.
 
 ## How picks are ranked
 
-- A hero the enemy already picked is never suggested.
+- A hero that either team picked or banned is never suggested.
 - Ratings count S 10 · A 7 · B 5 · C 3 · D 1. Unrated matchups are skipped, not counted as B.
 - A jungler's score is its average rating, pulled toward 5 (even) when only a few matchups are rated.
 - A jungler is recommended only when it's rated against at least half of the enemies entered. Otherwise the app shows "Not enough ratings" and the best partly rated options.
