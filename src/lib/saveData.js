@@ -1,9 +1,11 @@
 import { HEROES, HERO_BY_ID, LANES } from '../data/heroes.js';
+import { isComfortRating } from './dataReducer.js';
 import { findHeroId } from './heroIds.js';
 import { isPlainObject, isStringArray } from './storage.js';
 
-// Saved data, version 2: { version, junglers: [heroId], matchups: { junglerId: { enemyId: entry } } }
-// where an entry holds any of { tier, quickNote, comment }. Custom icons are saved separately by hero id.
+// Saved data, version 2: { version, junglers: [heroId], matchups: { junglerId: { enemyId: entry } },
+// comfort?: { junglerId: 1-5 } } where an entry holds any of { tier, quickNote, comment }.
+// Custom icons are saved separately by hero id.
 
 export const SAVE_VERSION = 2;
 
@@ -20,12 +22,18 @@ export const DEFAULT_JUNGLERS = HEROES.filter((hero) => hero.lanes.includes(LANE
 
 export const emptyData = () => ({ version: SAVE_VERSION, junglers: [...DEFAULT_JUNGLERS], matchups: {} });
 
-export const isSaveData = (value) =>
-  isPlainObject(value) && value.version === SAVE_VERSION && isStringArray(value.junglers) && isPlainObject(value.matchups);
+const isComfortMap = (value) => isPlainObject(value) && Object.values(value).every(isComfortRating);
 
-// Rebuilds roster, matchups and icons with every hero key passed through toId. Keys that aren't
-// heroes are left out and listed in `unmatched`. A missing roster falls back to the default junglers.
-function convertKeys({ junglers, matchups, images }, toId) {
+export const isSaveData = (value) =>
+  isPlainObject(value) &&
+  value.version === SAVE_VERSION &&
+  isStringArray(value.junglers) &&
+  isPlainObject(value.matchups) &&
+  (value.comfort === undefined || isComfortMap(value.comfort));
+
+// Rebuilds roster, matchups, comfort and icons with every hero key passed through toId. Keys that
+// aren't heroes are left out and listed in `unmatched`. A missing roster falls back to the defaults.
+function convertKeys({ junglers, matchups, comfort, images }, toId) {
   const unmatched = [];
   const idFor = (key) => {
     const id = toId(key);
@@ -49,13 +57,21 @@ function convertKeys({ junglers, matchups, images }, toId) {
     if (Object.keys(converted).length) matchupsById[junglerId] = { ...(matchupsById[junglerId] || {}), ...converted };
   });
 
+  const comfortById = {};
+  Object.entries(isPlainObject(comfort) ? comfort : {}).forEach(([heroKey, rating]) => {
+    const heroId = idFor(heroKey);
+    if (heroId && isComfortRating(rating)) comfortById[heroId] = rating;
+  });
+
   const imagesById = {};
   Object.entries(isPlainObject(images) ? images : {}).forEach(([heroKey, image]) => {
     const heroId = idFor(heroKey);
     if (heroId && typeof image === 'string') imagesById[heroId] = image;
   });
 
-  return { data: { version: SAVE_VERSION, junglers: junglerIds, matchups: matchupsById }, images: imagesById, unmatched };
+  const data = { version: SAVE_VERSION, junglers: junglerIds, matchups: matchupsById };
+  if (Object.keys(comfortById).length) data.comfort = comfortById;
+  return { data, images: imagesById, unmatched };
 }
 
 export const migrateV1 = ({ matchupData, junglerList, customImages } = {}) =>
@@ -69,13 +85,14 @@ export const buildExport = (data, images) => ({
   exportedAt: new Date().toISOString(),
   junglers: data.junglers,
   matchups: data.matchups,
+  comfort: data.comfort || {},
   images,
 });
 
 // Turns a backup file (current format or the old name-based one) into saved data.
 export function normalizeImport(file) {
   if (isPlainObject(file) && file.app === 'JunglerOS' && file.version === SAVE_VERSION) {
-    return convertKeys({ junglers: file.junglers, matchups: file.matchups, images: file.images }, knownHeroId);
+    return convertKeys({ junglers: file.junglers, matchups: file.matchups, comfort: file.comfort, images: file.images }, knownHeroId);
   }
   if (isPlainObject(file) && (file.matchupData || file.junglerList)) {
     return migrateV1(file);

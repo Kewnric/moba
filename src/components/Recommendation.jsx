@@ -1,99 +1,209 @@
 import { useEffect, useState } from 'react';
+import { LANES } from '../data/heroes.js';
+import { STATS_INFO } from '../data/stats.js';
 import { TIER_COLORS, TIER_LABELS } from '../data/tiers.js';
-import { TIER_WEIGHTS, isTier } from '../lib/engine.js';
+import { SCORE_PARTS } from '../lib/scoring.js';
 import { Icons } from './Icons.jsx';
 import HeroAvatar, { heroName } from './HeroAvatar.jsx';
-import RadarChart from './RadarChart.jsx';
 
-export default function Recommendation({ enemyIds, sortedJunglers, priorityPick, customImages, setTooltip, onOpenDatabase }) {
-    const [viewedHero, setViewedHero] = useState(null);
-    const [matrixPage, setMatrixPage] = useState(0);
+const PART_STYLES = [
+    { key: 'matchup', label: 'Matchups', className: 'bg-cyan-400' },
+    { key: 'teamFit', label: 'Team fit', className: 'bg-sky-600' },
+    { key: 'comfort', label: 'Comfort', className: 'bg-violet-400' },
+    { key: 'meta', label: 'Meta', className: 'bg-amber-400' },
+];
+const RISK_PATTERN = { backgroundImage: 'repeating-linear-gradient(135deg, rgba(248,113,113,0.95) 0 2px, transparent 2px 5px)' };
+const LIST_SIZE = 5;
+const SUBHEAD = 'text-[10px] font-bold uppercase tracking-widest text-gray-500 mb-1.5';
+const STATS_RANK = `${STATS_INFO.rank[0].toUpperCase()}${STATS_INFO.rank.slice(1)}`;
 
-    // A new enemy pick, ally pick or ban can change the whole ranking, so start over from the top pick.
-    const rankingKey = `${enemyIds.join(',')}|${sortedJunglers.map(j => j.id).join(',')}`;
-    useEffect(() => { setViewedHero(null); setMatrixPage(0); }, [rankingKey]);
+function ScoreBar({ entry, tall = false }) {
+    const positive = PART_STYLES.reduce((sum, part) => sum + entry.parts[part.key], 0);
+    const label = `Score ${Math.round(entry.total)} out of 100: ${PART_STYLES.map(part => `${part.label} ${Math.round(entry.parts[part.key])}`).join(', ')}, counter-pick risk minus ${entry.parts.risk.toFixed(1)}`;
+    return (
+        <div role="img" aria-label={label} className={`relative w-full ${tall ? 'h-3' : 'h-2'} rounded-full bg-slate-800 overflow-hidden`}>
+            <div className="absolute inset-0 flex">
+                {PART_STYLES.map(part => <span key={part.key} className={`h-full ${part.className}`} style={{ width: `${entry.parts[part.key]}%` }} />)}
+            </div>
+            {entry.parts.risk > 0 && (
+                <span className="absolute inset-y-0 border-l border-red-400" style={{ left: `${positive - entry.parts.risk}%`, width: `${entry.parts.risk}%`, ...RISK_PATTERN }} />
+            )}
+        </div>
+    );
+}
 
-    const current = viewedHero || priorityPick;
-    const ratedOptions = sortedJunglers.filter(j => j.rated > 0).slice(0, 3);
-    const otherOptions = current ? sortedJunglers.filter(j => j.id !== current.id && j.rated > 0).slice(0, 3) : [];
+function PartLegend() {
+    return (
+        <div className="flex flex-wrap gap-x-3 gap-y-1 text-[10px] text-gray-400">
+            {PART_STYLES.map(part => (
+                <span key={part.key} className="flex items-center gap-1"><span className={`w-2 h-2 rounded-sm ${part.className}`} />{part.label} (up to {SCORE_PARTS[part.key]})</span>
+            ))}
+            <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-sm border border-red-400" style={RISK_PATTERN} />Counter-pick risk</span>
+        </div>
+    );
+}
+
+function MatchupChip({ matchup }) {
+    const statsTone = matchup.delta >= 2 ? 'bg-emerald-500/20 text-emerald-300' : matchup.delta <= -2 ? 'bg-red-500/20 text-red-300' : 'bg-slate-700 text-gray-300';
+    return (
+        <div className="shrink-0 flex items-center gap-1.5 bg-black/30 px-2 py-1 rounded border border-white/5">
+            <span className="text-[10px] text-gray-400 whitespace-nowrap">vs {heroName(matchup.enemyId)}</span>
+            {matchup.lane === LANES.JUNGLE && <span title="Their jungler counts 1.5 times" className="text-[9px] font-bold text-emerald-300 bg-emerald-500/10 border border-emerald-500/30 rounded px-1 whitespace-nowrap">Jungler ×1.5</span>}
+            {matchup.source === 'you' && <span title={`Your rating: ${TIER_LABELS[matchup.tier]}`} className={`text-[10px] font-bold px-1.5 rounded text-white ${TIER_COLORS[matchup.tier]}`}>{matchup.tier}</span>}
+            {matchup.source === 'stats' && <span title={`${STATS_RANK} win-rate change in this matchup. You haven't rated it.`} className={`text-[10px] font-mono font-bold px-1.5 rounded ${statsTone}`}>{matchup.delta > 0 ? '+' : ''}{matchup.delta.toFixed(1)}</span>}
+            {!matchup.source && <span title="No rating or stats" className="text-[10px] font-bold px-1.5 rounded bg-slate-600 text-white">?</span>}
+            {matchup.quickNote && <span className="text-[10px] text-yellow-300 italic whitespace-nowrap max-w-[140px] truncate">{matchup.quickNote}</span>}
+        </div>
+    );
+}
+
+function RankedList({ entries, currentId, onSelect, customImages }) {
+    return (
+        <ol className="space-y-1.5">
+            {entries.map((entry, index) => (
+                <li key={entry.id}>
+                    <button type="button" onClick={() => onSelect(entry)} aria-current={entry.id === currentId ? 'true' : undefined}
+                        className={`w-full grid grid-cols-[1rem_2rem_minmax(0,1fr)_2.25rem] items-center gap-2 rounded-lg px-2 py-1.5 text-left transition-colors ${entry.id === currentId ? 'bg-cyan-500/10 border border-cyan-500/40' : 'bg-slate-800/40 border border-white/5 hover:border-white/20'}`}>
+                        <span className="text-[10px] font-mono text-gray-500 text-right">{index + 1}</span>
+                        <div className="w-8 h-8"><HeroAvatar heroId={entry.id} size="fill" className="w-full h-full" showTooltip={false} customImages={customImages} /></div>
+                        <div className="min-w-0 space-y-1">
+                            <div className="flex items-center justify-between gap-2">
+                                <span className="text-xs font-semibold text-white truncate">{heroName(entry.id)}</span>
+                                {entry.parts.risk >= 0.1 && <span title="Counter-pick risk: strong counters are still open" className="text-[9px] font-mono text-red-300 whitespace-nowrap">−{entry.parts.risk.toFixed(1)} risk</span>}
+                            </div>
+                            <ScoreBar entry={entry} />
+                        </div>
+                        <span className="text-sm font-mono font-bold text-cyan-300 text-right">{Math.round(entry.total)}</span>
+                    </button>
+                </li>
+            ))}
+        </ol>
+    );
+}
+
+function PoolSwitch({ onlyPool, setOnlyPool, hasPool }) {
+    const on = onlyPool && hasPool;
+    return (
+        <button type="button" role="switch" aria-checked={on} disabled={!hasPool} onClick={() => setOnlyPool(value => !value)}
+            title={hasPool ? 'Only rank junglers you gave a comfort rating' : 'Give junglers a comfort rating in Ratings to build your pool'}
+            className="flex items-center gap-2 text-[11px] font-semibold text-gray-300 disabled:opacity-40 disabled:cursor-not-allowed">
+            <span className={`relative w-8 h-4 rounded-full transition-colors ${on ? 'bg-cyan-500' : 'bg-slate-600'}`}>
+                <span className={`absolute top-0.5 w-3 h-3 rounded-full bg-white transition-all ${on ? 'left-4' : 'left-0.5'}`} />
+            </span>
+            Only my pool
+        </button>
+    );
+}
+
+function coverageText({ rated, known, total }) {
+    const parts = [];
+    if (rated) parts.push(`${rated} rated by you`);
+    if (known - rated) parts.push(`${known - rated} from stats`);
+    if (total - known) parts.push(`${total - known} unknown`);
+    return parts.join(' · ');
+}
+
+function PickDetails({ entry, customImages }) {
+    return (
+        <div className="animate-scaleUp">
+            <div className="flex items-center gap-4">
+                <div className="relative shrink-0 w-16 h-16 lg:w-24 lg:h-24">
+                    <div className="absolute inset-0 bg-cyan-500 blur-[40px] opacity-20 rounded-full"></div>
+                    <HeroAvatar heroId={entry.id} size="fill" className="w-full h-full" showTooltip={false} customImages={customImages} />
+                </div>
+                <div className="flex-1 min-w-0">
+                    <h2 className="text-2xl lg:text-4xl font-black text-white tracking-tight truncate">{heroName(entry.id)}</h2>
+                    <div className="mt-1 flex flex-wrap items-baseline gap-x-2">
+                        <span className="text-3xl lg:text-4xl font-mono font-black text-cyan-300">{Math.round(entry.total)}</span>
+                        <span className="text-xs text-gray-500">/ 100</span>
+                        {entry.coverage.total > 0 && <span className="text-[11px] text-gray-400">{coverageText(entry.coverage)}</span>}
+                    </div>
+                </div>
+            </div>
+
+            <div className="mt-3 space-y-2">
+                <ScoreBar entry={entry} tall />
+                <PartLegend />
+            </div>
+
+            <div className="mt-4 space-y-3">
+                {entry.details.matchups.length > 0 && (
+                    <div>
+                        <h3 className={SUBHEAD}>Matchups</h3>
+                        <div className="flex gap-2 overflow-x-auto pb-1 scrollbar-hide">
+                            {entry.details.matchups.map(matchup => <MatchupChip key={matchup.enemyId} matchup={matchup} />)}
+                        </div>
+                    </div>
+                )}
+                <div>
+                    <h3 className={SUBHEAD}>Team fit</h3>
+                    <ul className="text-xs text-gray-300 space-y-0.5">{entry.details.teamFit.reasons.map(reason => <li key={reason}>{reason}</li>)}</ul>
+                </div>
+                {entry.parts.risk > 0 && (
+                    <div>
+                        <h3 className={SUBHEAD}>Counter-pick risk</h3>
+                        <p className="text-xs text-red-300">Still open and strong against {heroName(entry.id)}: {entry.details.risk.counterIds.map(heroName).join(', ')}.</p>
+                    </div>
+                )}
+                <div className="flex flex-wrap gap-x-4 gap-y-1 text-[11px] text-gray-400">
+                    <span>{entry.details.comfort ? `Your comfort: ${entry.details.comfort}/5` : 'No comfort rating yet'}</span>
+                    <span>{entry.details.winRate !== null ? `${STATS_RANK} win rate ${(entry.details.winRate * 100).toFixed(1)}%` : 'No win-rate data'}</span>
+                </div>
+            </div>
+        </div>
+    );
+}
+
+export default function Recommendation({ scoring, onlyPool, setOnlyPool, hasPool, customImages, onOpenDatabase }) {
+    const { mode, ranked, recommended } = scoring;
+    const [viewedId, setViewedId] = useState(null);
+
+    // Any new pick or ban can reorder everything, so go back to the top recommendation.
+    const rankingKey = `${mode}|${ranked.map(entry => entry.id).join(',')}`;
+    useEffect(() => { setViewedId(null); }, [rankingKey]);
+
+    const viewed = viewedId ? ranked.find(entry => entry.id === viewedId) : null;
+    const fallback = mode === 'counter' ? ranked[0] : null;
+    const current = viewed || recommended || fallback || null;
+    const title = mode === 'blind'
+        ? (viewed ? 'Early pick' : 'Safe early picks')
+        : viewed && viewed !== recommended ? 'Alternative option'
+            : recommended ? 'Recommended pick' : 'Best available · limited data';
+
+    const select = (entry) => setViewedId(recommended && entry.id === recommended.id ? null : entry.id);
 
     return (
         <section aria-label="Recommended jungler" className="glass-panel rounded-2xl p-4 lg:p-8 relative overflow-hidden">
             <div className="absolute top-0 left-0 w-full h-1 bg-gradient-to-r from-cyan-500 via-blue-500 to-purple-500"></div>
-            {current ? (
-                <div className="animate-scaleUp">
-                    <div className="flex items-center gap-4 lg:gap-10">
-                        <div className="relative shrink-0 w-16 h-16 lg:w-28 lg:h-28 lg:order-last">
-                            <div className="absolute inset-0 bg-cyan-500 blur-[40px] opacity-20 rounded-full"></div>
-                            <HeroAvatar heroId={current.id} size="fill" className="w-full h-full" showTooltip={false} customImages={customImages} />
-                        </div>
-                        <div className="flex-1 min-w-0">
-                            <div className="flex items-center gap-2 text-cyan-400 mb-1"><Icons.Crown size={16} /><span className="text-[10px] lg:text-xs font-bold uppercase tracking-widest">{viewedHero ? 'Alternative Option' : (current.score >= TIER_WEIGHTS.B ? 'Recommended Priority' : 'Best Rated Option · Unfavored')}</span></div>
-                            <h2 className="text-2xl lg:text-5xl font-black text-white tracking-tight truncate">{heroName(current.id)}</h2>
-                            <div className="flex flex-wrap gap-x-5 gap-y-1 mt-1 lg:mt-3 font-mono text-sm lg:text-lg">
-                                <span><span className="font-sans text-[10px] uppercase text-gray-500 mr-1.5">Score</span><span className="font-bold text-cyan-400">{current.score.toFixed(1)}</span><span className="text-xs text-gray-500"> / 10</span></span>
-                                <span><span className="font-sans text-[10px] uppercase text-gray-500 mr-1.5">Matchups rated</span><span className="font-bold text-green-400">{current.rated}</span><span className="text-xs text-gray-500"> / {current.total}</span></span>
-                            </div>
-                        </div>
-                        <div className="hidden xl:block shrink-0">
-                            <RadarChart heroes={sortedJunglers} currentHero={current} onSelect={setViewedHero} page={matrixPage} setPage={setMatrixPage} />
-                        </div>
-                    </div>
 
-                    {viewedHero && <button type="button" onClick={() => setViewedHero(null)} className="text-xs text-cyan-400 hover:underline mt-3 block">&larr; {priorityPick ? 'Return to #1 Pick' : 'Back to options'}</button>}
+            <div className="flex flex-wrap items-center justify-between gap-2 mb-3">
+                <div className="flex items-center gap-2 text-cyan-400"><Icons.Crown size={16} /><span className="text-[10px] lg:text-xs font-bold uppercase tracking-widest">{title}</span></div>
+                <PoolSwitch onlyPool={onlyPool} setOnlyPool={setOnlyPool} hasPool={hasPool} />
+            </div>
 
-                    <div className="flex gap-2 overflow-x-auto pb-1 mt-3 scrollbar-hide">
-                        {enemyIds.map(enemyId => {
-                            const entry = current.data[enemyId];
-                            const tier = entry && isTier(entry.tier) ? entry.tier : '?';
-                            return (
-                                <div key={enemyId} className="shrink-0 flex items-center gap-2 bg-black/30 px-2.5 py-1 rounded border border-white/5">
-                                    <span className="text-[10px] text-gray-400 whitespace-nowrap">vs {heroName(enemyId)}</span>
-                                    <span title={tier === '?' ? 'Not rated yet' : TIER_LABELS[tier]} className={`text-[10px] font-bold px-1.5 rounded ${TIER_COLORS[tier]} text-white`}>{tier}</span>
-                                    {entry && entry.quickNote && <span className="text-[10px] text-yellow-300 italic whitespace-nowrap max-w-[160px] truncate">{entry.quickNote}</span>}
-                                </div>
-                            );
-                        })}
-                    </div>
-
-                    {otherOptions.length > 0 && (
-                        <div className="mt-3 xl:hidden">
-                            <div className="text-[10px] uppercase tracking-widest text-gray-500 mb-1.5">Other options</div>
-                            <div className="flex gap-2 overflow-x-auto scrollbar-hide">
-                                {otherOptions.map(option => (
-                                    <button key={option.id} type="button" onClick={() => setViewedHero(option)} className="shrink-0 flex items-center gap-2 bg-slate-800/60 border border-white/5 hover:border-cyan-500/50 rounded-lg pl-1 pr-2.5 py-1 text-left">
-                                        <div className="w-7 h-7"><HeroAvatar heroId={option.id} size="fill" className="w-full h-full" showTooltip={false} customImages={customImages} /></div>
-                                        <span className="text-xs font-semibold text-white whitespace-nowrap">{heroName(option.id)}</span>
-                                        <span className="text-[10px] font-mono text-gray-400">{option.score.toFixed(1)}</span>
-                                    </button>
-                                ))}
-                            </div>
-                        </div>
-                    )}
-                </div>
-            ) : enemyIds.length > 0 ? (
-                <div className="animate-scaleUp">
-                    <div className="flex items-center gap-2 text-amber-400 mb-2"><Icons.Info size={16} /><span className="text-[10px] lg:text-xs font-bold uppercase tracking-widest">Not enough ratings</span></div>
-                    <h2 className="text-lg lg:text-2xl font-bold text-white mb-2">{ratedOptions.length ? 'No jungler is rated against enough of this lineup yet' : 'None of your junglers are rated against this lineup yet'}</h2>
-                    <p className="text-xs lg:text-sm text-gray-400 mb-4 lg:mb-6 max-w-xl">A jungler is recommended once it's rated against at least half of the enemies you've entered. Rate matchups in Database to get a pick.</p>
-                    {ratedOptions.length > 0 && (
-                        <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 lg:gap-4 mb-4 lg:mb-6">
-                            {ratedOptions.map(option => (
-                                <button key={option.id} type="button" onClick={() => setViewedHero(option)} className="bg-slate-800/50 p-3 lg:p-4 rounded-xl border border-white/5 hover:border-cyan-500/50 flex items-center gap-3 text-left transition-colors">
-                                    <HeroAvatar heroId={option.id} size="sm" showTooltip={false} customImages={customImages} />
-                                    <div><div className="text-sm font-bold text-white">{heroName(option.id)}</div><div className="text-[11px] text-gray-400 font-mono">{option.score.toFixed(1)} · rated {option.rated}/{option.total}</div></div>
-                                </button>
-                            ))}
-                        </div>
-                    )}
-                    <button type="button" onClick={onOpenDatabase} className="px-4 py-2 rounded-lg bg-purple-600 hover:bg-purple-500 text-white text-xs font-bold uppercase tracking-wide shadow-lg">Rate matchups in Database</button>
+            {ranked.length === 0 ? (
+                <div className="py-6 text-center text-sm text-gray-400 space-y-3">
+                    <p>{onlyPool && hasPool ? 'None of the junglers in your pool are still available. Turn off "Only my pool" to see everyone.' : 'All of your junglers are picked or banned.'}</p>
+                    <button type="button" onClick={onOpenDatabase} className="px-4 py-2 rounded-lg bg-purple-600 hover:bg-purple-500 text-white text-xs font-bold uppercase tracking-wide">Add junglers in Ratings</button>
                 </div>
             ) : (
-                <div className="flex flex-col items-center justify-center py-6 lg:py-12 text-gray-500 text-center">
-                    <Icons.Target size={24} className="mb-3 opacity-50" />
-                    <div className="text-xs lg:text-sm font-bold uppercase tracking-widest">Add enemy picks to get a recommendation</div>
-                </div>
+                <>
+                    {mode === 'blind' && !viewed && (
+                        <p className="text-xs text-gray-400 mb-3 max-w-xl">No enemy picks yet. These junglers have the fewest strong counters still open, weighed with your comfort, team fit and {STATS_RANK} win rates.</p>
+                    )}
+                    {current && <PickDetails entry={current} customImages={customImages} />}
+                    {viewed && <button type="button" onClick={() => setViewedId(null)} className="text-xs text-cyan-400 hover:underline mt-3 block">&larr; {recommended ? 'Back to the recommended pick' : 'Back to the ranking'}</button>}
+                    <div className={current ? 'mt-5' : ''}>
+                        <h3 className={SUBHEAD}>{mode === 'blind' ? 'Ranking' : 'Top options'}</h3>
+                        <RankedList entries={ranked.slice(0, LIST_SIZE)} currentId={current && current.id} onSelect={select} customImages={customImages} />
+                    </div>
+                </>
             )}
+
+            <div className="mt-4 pt-3 border-t border-white/5 flex flex-wrap items-center justify-between gap-2 text-[10px] text-gray-500">
+                <span>Your own ratings count double. Unrated matchups use {STATS_RANK} stats from {STATS_INFO.updated}.</span>
+                <button type="button" onClick={onOpenDatabase} className="text-cyan-400 hover:underline">Rate matchups</button>
+            </div>
         </section>
     );
 }

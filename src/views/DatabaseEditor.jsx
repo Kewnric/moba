@@ -8,10 +8,12 @@ import HeroPool from '../components/HeroPool.jsx';
 
 const LANE_FILTERS = ['All', ...Object.values(LANES)];
 const UNRATE = 'unrate';
+const COMFORT_LABELS = { 1: 'Rarely play', 2: 'Learning', 3: 'Comfortable', 4: 'Strong', 5: 'Main' };
 
 export default function DatabaseEditor({
     junglers,
     matchups,
+    comfort,
     editorJungler,
     setEditorJungler,
     dispatch,
@@ -33,10 +35,12 @@ export default function DatabaseEditor({
     const ratedIds = Object.keys(junglerMatchups).filter(enemyId => junglerMatchups[enemyId].tier);
     const unrankedHeroes = filterHeroes(HEROES, { lane: laneFilter, search, hideIds: ratedIds });
     const isRating = Boolean(quickTier) && quickTier !== UNRATE;
+    const comfortLevel = (editorJungler && comfort[editorJungler]) || null;
 
     const toggleQuickTier = (tier) => setQuickTier(current => (current === tier ? null : tier));
     const rate = (enemyId, tier) => dispatch({ type: 'setTier', junglerId: editorJungler, enemyId, tier });
     const unrate = (enemyId) => dispatch({ type: 'clearTier', junglerId: editorJungler, enemyId });
+    const setComfort = (level) => dispatch({ type: 'setComfort', junglerId: editorJungler, comfort: comfortLevel === level ? null : level });
 
     const handleRatedHeroTap = (enemyId) => {
         if (quickTier === UNRATE) unrate(enemyId);
@@ -65,17 +69,29 @@ export default function DatabaseEditor({
                 <div className="flex items-center flex-1 sm:flex-none min-w-0">
                     <select aria-label="Jungler to rate" className="flex-1 sm:flex-none min-w-0 sm:min-w-[180px] bg-slate-800 text-white border border-white/20 rounded-l px-3 lg:px-4 py-2 focus:outline-none focus:border-cyan-500 text-sm font-medium" onChange={(e) => setEditorJungler(e.target.value)} value={editorJungler || ''}>
                         <option value="" disabled>Select Jungler to Tune...</option>
-                        {junglers.map(id => <option key={id} value={id}>{heroName(id)}</option>)}
+                        {junglers.map(id => <option key={id} value={id}>{heroName(id)}{comfort[id] ? ` (comfort ${comfort[id]})` : ''}</option>)}
                     </select>
                     <button type="button" onClick={onAddJungler} className="bg-slate-800 hover:bg-slate-700 text-green-400 border border-white/20 border-l-0 rounded-r px-3 py-2" title="Add New Jungler" aria-label="Add New Jungler"><Icons.Plus size={16} /></button>
                 </div>
+                {editorJungler && (
+                    <div className="flex items-center gap-1" role="group" aria-label={`How comfortable you are playing ${heroName(editorJungler)}`}>
+                        <span className="text-[10px] uppercase tracking-wider text-gray-500 mr-1" title="1 is rarely played, 5 is your main. Adds up to 20 points and builds your pool.">Comfort</span>
+                        {[1, 2, 3, 4, 5].map(level => (
+                            <button key={level} type="button" aria-pressed={comfortLevel === level} title={COMFORT_LABELS[level]} onClick={() => setComfort(level)}
+                                className={`w-7 h-7 rounded-md text-xs font-bold transition-colors ${comfortLevel && level <= comfortLevel ? 'bg-emerald-500 text-black' : 'bg-slate-800 text-gray-400 border border-white/10 hover:text-white'}`}>
+                                {level}
+                            </button>
+                        ))}
+                        <span className="hidden sm:inline text-[10px] text-gray-400 ml-1 w-20">{comfortLevel ? COMFORT_LABELS[comfortLevel] : 'Not set'}</span>
+                    </div>
+                )}
                 {editorJungler && <button type="button" onClick={onDeleteJungler} className="flex items-center gap-1 text-xs text-red-400 hover:text-red-300 border border-red-900/50 bg-red-900/20 px-3 py-1.5 rounded hover:bg-red-900/40 transition-colors"><Icons.Trash2 size={12} /> Remove Hero</button>}
             </div>
             {editorJungler ? (
                 <div className="flex-1 min-h-0 flex flex-col lg:flex-row overflow-y-auto lg:overflow-hidden">
                     <div className="lg:flex-1 p-3 lg:p-8 lg:min-h-0 lg:overflow-y-auto scrollbar-hide">
                         <p className="text-xs text-gray-400 mb-3 lg:mb-4 max-w-2xl">
-                            How does <span className="text-white font-semibold">{heroName(editorJungler)}</span> do against each hero? Choose a tier, then tap heroes to rate them. On desktop you can also drag. The pencil adds a quick tip; the speech bubble adds a longer note.
+                            How does <span className="text-white font-semibold">{heroName(editorJungler)}</span> do against each hero? Choose a tier, then tap heroes to rate them. On desktop you can also drag. The pencil adds a quick tip; the speech bubble adds a longer note. Heroes you don't rate use Mythic win-rate stats at half the weight of your ratings.
                         </p>
                         <div className="space-y-2 lg:space-y-4 pb-4 lg:pb-20">
                             {TIERS.map(tier => {

@@ -1,5 +1,7 @@
 export const TIERS = ['S', 'A', 'B', 'C', 'D'];
 
+export const isTier = (tier) => TIERS.includes(tier);
+
 // What each tier means for the jungler being rated, against the enemy hero in that row.
 export const TIER_LABELS = {
   S: 'Hard counter',

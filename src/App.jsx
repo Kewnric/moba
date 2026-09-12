@@ -1,9 +1,11 @@
 import { useEffect, useMemo, useReducer, useState } from 'react';
-import { HEROES } from './data/heroes.js';
-import { rankJunglers } from './lib/engine.js';
-import { unavailableIds } from './lib/draft.js';
+import { HEROES, HERO_BY_ID } from './data/heroes.js';
+import { HERO_META } from './data/stats.js';
+import { resolveEnemyLanes } from './lib/draft.js';
 import { dataReducer } from './lib/dataReducer.js';
 import { STORAGE_KEYS, buildExport, clearSave, countRatings, loadSave, normalizeImport } from './lib/saveData.js';
+import { scoreJunglers } from './lib/scoring.js';
+import { MATCHUPS } from './lib/stats.js';
 import { createSafeStorage } from './lib/storage.js';
 import { compressImage, downloadJson } from './lib/files.js';
 import { useDraft } from './hooks/useDraft.js';
@@ -24,6 +26,9 @@ const NAV_TABS = [
 ];
 
 const WRITE_FAILED = "Your last change couldn't be saved because browser storage is full or blocked. Export a backup from Data Hub before closing this tab.";
+
+const heroInfo = (heroId) => HERO_BY_ID[heroId] || null;
+const lanesOf = (heroId) => (HERO_BY_ID[heroId] ? HERO_BY_ID[heroId].lanes : []);
 
 // Loads the save once at startup, collecting storage problems instead of reporting them mid-render.
 const readStartupSave = () => {
@@ -46,6 +51,7 @@ export default function App() {
     const draftState = useDraft();
 
     const [view, setView] = useState('draft');
+    const [onlyPool, setOnlyPool] = useState(false);
     const [editorJungler, setEditorJungler] = useState(null);
     const [editingNote, setEditingNote] = useState(null); // { field: 'quickNote' | 'comment', enemyId, text }
     const [isAddingJungler, setIsAddingJungler] = useState(false);
@@ -128,13 +134,22 @@ export default function App() {
     const handleDragEnd = () => setDraggingSource(null);
 
     const { draft } = draftState;
-    const enemyIds = useMemo(() => draft.enemy.filter(Boolean), [draft]);
-    const unavailable = useMemo(() => unavailableIds(draft), [draft]);
+    const comfort = data.comfort || {};
+    const hasPool = Object.keys(comfort).length > 0;
+    const enemyLanes = useMemo(() => resolveEnemyLanes(draft, lanesOf), [draft]);
 
-    const { ranked: sortedJunglers, recommended: priorityPick } = useMemo(
-        () => rankJunglers(data.junglers, enemyIds, data.matchups, unavailable),
-        [data, enemyIds, unavailable]
-    );
+    const scoring = useMemo(() => scoreJunglers({
+        junglerIds: data.junglers,
+        enemies: draft.enemy.map((heroId, index) => (heroId ? { heroId, lane: enemyLanes[index] } : null)).filter(Boolean),
+        allyIds: draft.ally.filter(Boolean),
+        unavailableIds: [...draft.allyBans, ...draft.enemyBans].filter(Boolean),
+        ratings: data.matchups,
+        comfort,
+        onlyPool: onlyPool && hasPool,
+        matchupStats: MATCHUPS,
+        meta: HERO_META,
+        heroInfo,
+    }), [data, draft, enemyLanes, onlyPool, hasPool, comfort]);
 
     const stats = useMemo(() => ({
         junglerCount: data.junglers.length,
@@ -176,9 +191,11 @@ export default function App() {
                 {view === 'draft' && (
                     <DraftLab
                         draftState={draftState}
-                        enemyIds={enemyIds}
-                        sortedJunglers={sortedJunglers}
-                        priorityPick={priorityPick}
+                        enemyLanes={enemyLanes}
+                        scoring={scoring}
+                        onlyPool={onlyPool}
+                        setOnlyPool={setOnlyPool}
+                        hasPool={hasPool}
                         customImages={customImages}
                         setTooltip={setTooltipState}
                         onOpenDatabase={() => setView('editor')}
@@ -188,6 +205,7 @@ export default function App() {
                     <DatabaseEditor
                         junglers={data.junglers}
                         matchups={data.matchups}
+                        comfort={comfort}
                         editorJungler={editorJungler}
                         setEditorJungler={setEditorJungler}
                         dispatch={dispatch}

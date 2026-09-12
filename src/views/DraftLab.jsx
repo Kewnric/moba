@@ -1,6 +1,5 @@
 import { useMemo, useState } from 'react';
-import { HEROES, HERO_BY_ID, LANES } from '../data/heroes.js';
-import { resolveEnemyLanes } from '../lib/draft.js';
+import { HEROES, LANES } from '../data/heroes.js';
 import { filterHeroes } from '../lib/heroFilter.js';
 import { Icons } from '../components/Icons.jsx';
 import DraftBoard from '../components/DraftBoard.jsx';
@@ -9,11 +8,10 @@ import Recommendation from '../components/Recommendation.jsx';
 
 const LANE_FILTERS = ['All', ...Object.values(LANES)];
 const TAKEN_LABELS = { ally: 'Ally', enemy: 'Enemy', allyBans: 'Banned', enemyBans: 'Banned' };
-const lanesOf = (heroId) => (HERO_BY_ID[heroId] ? HERO_BY_ID[heroId].lanes : []);
 
 // Phones: the board stays pinned at the top while the recommendation and hero picker scroll under it.
 // Desktop: the hero picker is a left column beside the board and recommendation.
-export default function DraftLab({ draftState, enemyIds, sortedJunglers, priorityPick, customImages, setTooltip, onOpenDatabase }) {
+export default function DraftLab({ draftState, enemyLanes, scoring, onlyPool, setOnlyPool, hasPool, customImages, setTooltip, onOpenDatabase }) {
     const { draft, activeSlot } = draftState;
     const [laneFilter, setLaneFilter] = useState('All');
     const [search, setSearch] = useState('');
@@ -26,7 +24,6 @@ export default function DraftLab({ draftState, enemyIds, sortedJunglers, priorit
         return labels;
     }, [draft]);
 
-    const enemyLanes = useMemo(() => resolveEnemyLanes(draft, lanesOf), [draft]);
     const heroes = filterHeroes(HEROES, { lane: laneFilter, search });
 
     const pick = (heroId) => {
@@ -55,7 +52,7 @@ export default function DraftLab({ draftState, enemyIds, sortedJunglers, priorit
             </div>
 
             <div className="p-3 lg:px-8 lg:pt-2 lg:pb-8 lg:col-start-2 lg:row-start-2 lg:min-h-0 lg:overflow-y-auto scrollbar-hide">
-                <Recommendation enemyIds={enemyIds} sortedJunglers={sortedJunglers} priorityPick={priorityPick} customImages={customImages} setTooltip={setTooltip} onOpenDatabase={onOpenDatabase} />
+                <Recommendation scoring={scoring} onlyPool={onlyPool} setOnlyPool={setOnlyPool} hasPool={hasPool} customImages={customImages} onOpenDatabase={onOpenDatabase} />
             </div>
 
             <aside aria-label="Hero picker" className="bg-slate-900/50 border-t border-white/10 lg:border-t-0 lg:border-r lg:col-start-1 lg:row-start-1 lg:row-span-2 lg:flex lg:flex-col lg:min-h-0">
