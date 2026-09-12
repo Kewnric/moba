@@ -1,6 +1,7 @@
 import { useState } from 'react';
-import { LANES } from '../data/heroes.js';
+import { HEROES, LANES } from '../data/heroes.js';
 import { TIERS, TIER_COLORS } from '../data/tiers.js';
+import { filterHeroes } from '../lib/heroFilter.js';
 import { Icons } from '../components/Icons.jsx';
 import HeroAvatar, { heroName } from '../components/HeroAvatar.jsx';
 import HeroPool from '../components/HeroPool.jsx';
@@ -27,6 +28,8 @@ export default function DatabaseEditor({
     const [laneFilter, setLaneFilter] = useState('All');
     const [activeQuickRankTier, setActiveQuickRankTier] = useState(null);
     const junglerMatchups = (editorJungler && matchups[editorJungler]) || {};
+    const ratedIds = Object.keys(junglerMatchups).filter(enemyId => junglerMatchups[enemyId].tier);
+    const unrankedHeroes = filterHeroes(HEROES, { lane: laneFilter, search, hideIds: ratedIds });
 
     const handleDropOnUnranked = (e) => {
         e.preventDefault();
@@ -87,19 +90,17 @@ export default function DatabaseEditor({
                             <div className="relative mb-4"><Icons.Search className="absolute left-3 top-2.5 text-gray-500" size={16} /><input type="text" placeholder="Search..." className="w-full bg-slate-800 rounded-lg pl-10 pr-4 py-2 text-sm text-white focus:outline-none focus:ring-1 focus:ring-cyan-500 border border-white/5" value={search} onChange={(e) => setSearch(e.target.value)} /></div>
                             <div className="flex flex-wrap gap-2">{LANE_FILTERS.map(lane => <button key={lane} onClick={() => setLaneFilter(lane)} className={`text-[10px] px-2 py-1 rounded border ${laneFilter === lane ? 'bg-cyan-500/20 border-cyan-500 text-cyan-400' : 'border-white/10 text-gray-500'}`}>{lane === 'All' ? 'ALL' : lane.split(' ')[0]}</button>)}</div>
                         </div>
-                        <div className="flex-1 overflow-hidden hover:overflow-y-auto scrollbar-hide bg-slate-950/50 relative">
+                        <div className="flex-1 overflow-y-auto scrollbar-hide bg-slate-950/50 relative">
                             {draggingSource === 'tier_item' && <div className="absolute inset-0 z-50 bg-red-500/10 flex items-center justify-center border-2 border-dashed border-red-500/50 m-2 rounded-xl pointer-events-none"><span className="text-red-400 font-bold uppercase tracking-widest">Remove Rank</span></div>}
                             <HeroPool
-                                dragSource="unranked_pool"
-                                laneFilter={laneFilter}
-                                search={search}
-                                hideRatedIn={junglerMatchups}
+                                heroes={unrankedHeroes}
                                 quickNotes={junglerMatchups}
                                 highlight={!!activeQuickRankTier}
                                 onHeroClick={(heroId) => activeQuickRankTier && dispatch({ type: 'setTier', junglerId: editorJungler, enemyId: heroId, tier: activeQuickRankTier })}
                                 onEditNote={(heroId, note) => onEditQuickNote(heroId, note || '')}
                                 customImages={customImages}
                                 setTooltip={setTooltip}
+                                dragSource="unranked_pool"
                                 onDragStart={onDragStart}
                                 onDragEnd={onDragEnd}
                             />

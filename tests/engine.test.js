@@ -1,45 +1,8 @@
 import { test } from 'vitest';
 import assert from 'node:assert/strict';
-import { addToFirstEmptySlot, placeInSlot, moveSlot, rankJunglers } from '../src/lib/engine.js';
+import { rankJunglers } from '../src/lib/engine.js';
 
 const ids = (ranked) => ranked.map((entry) => entry.id);
-
-test('addToFirstEmptySlot fills the first empty slot', () => {
-  assert.deepEqual(addToFirstEmptySlot(['ling', null, null], 'tigreal'), ['ling', 'tigreal', null]);
-});
-
-test('addToFirstEmptySlot ignores a hero already in the lineup', () => {
-  const slots = ['ling', null];
-  assert.equal(addToFirstEmptySlot(slots, 'ling'), slots);
-});
-
-test('addToFirstEmptySlot leaves a full lineup unchanged', () => {
-  const slots = ['ling', 'tigreal'];
-  assert.equal(addToFirstEmptySlot(slots, 'fanny'), slots);
-});
-
-test('placeInSlot puts a hero into the chosen slot without mutating the original', () => {
-  const slots = ['ling', null, null];
-  assert.deepEqual(placeInSlot(slots, 2, 'tigreal'), ['ling', null, 'tigreal']);
-  assert.deepEqual(slots, ['ling', null, null]);
-});
-
-test('placeInSlot refuses a hero who is already in a different slot', () => {
-  const slots = ['ling', null];
-  assert.equal(placeInSlot(slots, 1, 'ling'), slots);
-});
-
-test('placeInSlot replaces the hero in an occupied slot', () => {
-  assert.deepEqual(placeInSlot(['ling', 'tigreal'], 1, 'fanny'), ['ling', 'fanny']);
-});
-
-test('moveSlot swaps two occupied slots instead of deleting one', () => {
-  assert.deepEqual(moveSlot(['ling', 'tigreal', null], 0, 1), ['tigreal', 'ling', null]);
-});
-
-test('moveSlot moves a hero into an empty slot', () => {
-  assert.deepEqual(moveSlot(['ling', null], 0, 1), [null, 'ling']);
-});
 
 test('rankJunglers returns nothing until an enemy is entered', () => {
   assert.deepEqual(rankJunglers(['ling'], [], {}), { ranked: [], recommended: null });
@@ -48,6 +11,11 @@ test('rankJunglers returns nothing until an enemy is entered', () => {
 test('rankJunglers never suggests a jungler the enemy already picked', () => {
   const { ranked } = rankJunglers(['ling', 'fanny'], ['ling'], {});
   assert.deepEqual(ids(ranked), ['fanny']);
+});
+
+test('rankJunglers never suggests a hero your team picked or anyone banned', () => {
+  const { ranked } = rankJunglers(['ling', 'fanny', 'hayabusa', 'karina'], ['tigreal'], {}, ['fanny', 'hayabusa']);
+  assert.deepEqual(ids(ranked), ['karina', 'ling']);
 });
 
 test('rankJunglers recommends nobody when no matchups are rated', () => {

@@ -1,10 +1,12 @@
 import { useEffect, useMemo, useReducer, useState } from 'react';
 import { HEROES } from './data/heroes.js';
 import { rankJunglers } from './lib/engine.js';
+import { unavailableIds } from './lib/draft.js';
 import { dataReducer } from './lib/dataReducer.js';
 import { STORAGE_KEYS, buildExport, clearSave, countRatings, loadSave, normalizeImport } from './lib/saveData.js';
 import { createSafeStorage } from './lib/storage.js';
 import { compressImage, downloadJson } from './lib/files.js';
+import { useDraft } from './hooks/useDraft.js';
 import { Icons } from './components/Icons.jsx';
 import GlobalTooltip from './components/GlobalTooltip.jsx';
 import { heroName } from './components/HeroAvatar.jsx';
@@ -15,10 +17,10 @@ import AssetManager from './views/AssetManager.jsx';
 import DataHub from './views/DataHub.jsx';
 
 const NAV_TABS = [
-    { id: 'draft', label: 'Draft Lab', icon: Icons.Target, activeClass: 'bg-cyan-600' },
-    { id: 'editor', label: 'Database', icon: Icons.Edit3, activeClass: 'bg-purple-600' },
-    { id: 'assets', label: 'Assets', icon: Icons.Image, activeClass: 'bg-orange-600' },
-    { id: 'data', label: 'Data Hub', icon: Icons.Database, activeClass: 'bg-emerald-600' },
+    { id: 'draft', label: 'Draft Lab', shortLabel: 'Draft', icon: Icons.Target, activeClass: 'bg-cyan-600' },
+    { id: 'editor', label: 'Database', shortLabel: 'Ratings', icon: Icons.Edit3, activeClass: 'bg-purple-600' },
+    { id: 'assets', label: 'Assets', shortLabel: 'Icons', icon: Icons.Image, activeClass: 'bg-orange-600' },
+    { id: 'data', label: 'Data Hub', shortLabel: 'Data', icon: Icons.Database, activeClass: 'bg-emerald-600' },
 ];
 
 const WRITE_FAILED = "Your last change couldn't be saved because browser storage is full or blocked. Export a backup from Data Hub before closing this tab.";
@@ -41,9 +43,9 @@ export default function App() {
     const [data, dispatch] = useReducer(dataReducer, startup.data);
     const [customImages, setCustomImages] = useState(startup.images);
     const [storageWarning, setStorageWarning] = useState(() => startupWarning(startup));
+    const draftState = useDraft();
 
     const [view, setView] = useState('draft');
-    const [enemySlots, setEnemySlots] = useState([null, null, null, null, null]);
     const [editorJungler, setEditorJungler] = useState(null);
     const [editingNote, setEditingNote] = useState(null); // { field: 'quickNote' | 'comment', enemyId, text }
     const [isAddingJungler, setIsAddingJungler] = useState(false);
@@ -125,11 +127,13 @@ export default function App() {
     };
     const handleDragEnd = () => setDraggingSource(null);
 
-    const enemyIds = useMemo(() => enemySlots.filter(Boolean), [enemySlots]);
+    const { draft } = draftState;
+    const enemyIds = useMemo(() => draft.enemy.filter(Boolean), [draft]);
+    const unavailable = useMemo(() => unavailableIds(draft), [draft]);
 
     const { ranked: sortedJunglers, recommended: priorityPick } = useMemo(
-        () => rankJunglers(data.junglers, enemyIds, data.matchups),
-        [data, enemyIds]
+        () => rankJunglers(data.junglers, enemyIds, data.matchups, unavailable),
+        [data, enemyIds, unavailable]
     );
 
     const stats = useMemo(() => ({
@@ -143,43 +147,41 @@ export default function App() {
         [data.junglers]
     );
 
-    const dragProps = { draggingSource, onDragStart: handleDragStart, onDragEnd: handleDragEnd };
-
     return (
-        <div className="h-screen w-full flex flex-col bg-[#0f172a] text-gray-100">
+        <div className="h-dvh w-full flex flex-col bg-[#0f172a] text-gray-100">
             <GlobalTooltip {...tooltipState} />
 
-            <nav className="h-16 bg-slate-900/80 backdrop-blur border-b border-white/10 flex items-center justify-between px-8 z-20 shrink-0">
-                <div className="flex items-center gap-4">
-                    <div className="bg-cyan-500/10 p-2 rounded-lg border border-cyan-500/30"><Icons.Swords className="text-cyan-400" /></div>
-                    <div><h1 className="text-xl font-bold text-white tracking-wider">JUNGLER<span className="text-cyan-400">OS</span></h1><div className="text-[10px] text-gray-500 tracking-[0.2em] uppercase">Tactical Counter Engine</div></div>
+            <nav className="h-14 lg:h-16 bg-slate-900/80 backdrop-blur border-b border-white/10 flex items-center justify-between gap-3 px-3 lg:px-8 z-30 shrink-0">
+                <div className="flex items-center gap-2 lg:gap-4 min-w-0">
+                    <div className="bg-cyan-500/10 p-1.5 lg:p-2 rounded-lg border border-cyan-500/30 shrink-0"><Icons.Swords size={20} className="text-cyan-400" /></div>
+                    <div className="hidden sm:block"><h1 className="text-lg lg:text-xl font-bold text-white tracking-wider">JUNGLER<span className="text-cyan-400">OS</span></h1><div className="hidden lg:block text-[10px] text-gray-500 tracking-[0.2em] uppercase">Tactical Counter Engine</div></div>
                 </div>
-                <div className="flex bg-slate-800 p-1 rounded-lg">
-                    {NAV_TABS.map(({ id, label, icon: TabIcon, activeClass }) => (
-                        <button key={id} onClick={() => setView(id)} className={`px-5 py-2 rounded-md text-xs font-bold uppercase tracking-wide transition-all flex items-center gap-2 ${view === id ? `${activeClass} text-white shadow-lg` : 'text-gray-400 hover:text-white'}`}><TabIcon size={14} /> {label}</button>
+                <div className="flex bg-slate-800 p-1 rounded-lg overflow-x-auto scrollbar-hide">
+                    {NAV_TABS.map(({ id, label, shortLabel, icon: TabIcon, activeClass }) => (
+                        <button key={id} type="button" aria-current={view === id ? 'page' : undefined} onClick={() => setView(id)} className={`shrink-0 px-3 lg:px-5 py-2 rounded-md text-[11px] lg:text-xs font-bold uppercase tracking-wide transition-all flex items-center gap-1.5 lg:gap-2 ${view === id ? `${activeClass} text-white shadow-lg` : 'text-gray-400 hover:text-white'}`}>
+                            <TabIcon size={14} /><span className="lg:hidden">{shortLabel}</span><span className="hidden lg:inline">{label}</span>
+                        </button>
                     ))}
                 </div>
             </nav>
 
             {storageWarning && (
-                <div role="alert" className="shrink-0 bg-amber-500/10 border-b border-amber-500/30 text-amber-200 text-xs px-8 py-2 flex items-center justify-between gap-4">
-                    <span className="flex items-center gap-2"><Icons.Info size={14} /> {storageWarning}</span>
-                    <button onClick={() => setStorageWarning(null)} className="text-amber-300 hover:text-white font-bold uppercase tracking-wide">Dismiss</button>
+                <div role="alert" className="shrink-0 bg-amber-500/10 border-b border-amber-500/30 text-amber-200 text-xs px-3 lg:px-8 py-2 flex items-center justify-between gap-4">
+                    <span className="flex items-center gap-2"><Icons.Info size={14} className="shrink-0" /> {storageWarning}</span>
+                    <button type="button" onClick={() => setStorageWarning(null)} className="text-amber-300 hover:text-white font-bold uppercase tracking-wide shrink-0">Dismiss</button>
                 </div>
             )}
 
-            <main className="flex-1 flex overflow-hidden relative">
+            <main className="flex-1 flex min-h-0 overflow-hidden relative">
                 {view === 'draft' && (
                     <DraftLab
-                        enemySlots={enemySlots}
-                        setEnemySlots={setEnemySlots}
+                        draftState={draftState}
                         enemyIds={enemyIds}
                         sortedJunglers={sortedJunglers}
                         priorityPick={priorityPick}
                         customImages={customImages}
                         setTooltip={setTooltipState}
                         onOpenDatabase={() => setView('editor')}
-                        {...dragProps}
                     />
                 )}
                 {view === 'editor' && (
@@ -195,7 +197,9 @@ export default function App() {
                         onEditComment={(enemyId, text) => setEditingNote({ field: 'comment', enemyId, text })}
                         customImages={customImages}
                         setTooltip={setTooltipState}
-                        {...dragProps}
+                        draggingSource={draggingSource}
+                        onDragStart={handleDragStart}
+                        onDragEnd={handleDragEnd}
                     />
                 )}
                 {view === 'assets' && <AssetManager customImages={customImages} onUpload={handleAssetUpload} />}

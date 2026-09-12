@@ -1,5 +1,5 @@
-// JunglerOS draft logic: enemy slots and jungler ranking, with heroes referred to by id. No React or
-// browser code, so the app and the tests in tests/ run exactly the same functions.
+// JunglerOS jungler ranking, with heroes referred to by id. No React or browser code, so the app
+// and the tests in tests/ run exactly the same functions.
 
 export const TIER_WEIGHTS = { S: 10, A: 7, B: 5, C: 3, D: 1 };
 const NEUTRAL_WEIGHT = TIER_WEIGHTS.B;
@@ -10,35 +10,15 @@ export const MIN_COVERAGE = 0.5;
 
 export const isTier = (tier) => Object.prototype.hasOwnProperty.call(TIER_WEIGHTS, tier);
 
-export function addToFirstEmptySlot(slots, heroId) {
-  const index = slots.findIndex((slot) => !slot);
-  if (index === -1 || slots.includes(heroId)) return slots;
-  const next = slots.slice();
-  next[index] = heroId;
-  return next;
-}
-
-export function placeInSlot(slots, index, heroId) {
-  if (slots.some((slot, i) => i !== index && slot === heroId)) return slots;
-  const next = slots.slice();
-  next[index] = heroId;
-  return next;
-}
-
-export function moveSlot(slots, from, to) {
-  if (from === to) return slots;
-  const next = slots.slice();
-  next[from] = slots[to] || null;
-  next[to] = slots[from] || null;
-  return next;
-}
-
-export function rankJunglers(junglerIds, enemyIds, matchups) {
+// Ranks your junglers against the enemy picks. Heroes the enemy picked, and any in unavailableIds
+// (your team's picks and every ban), are never ranked.
+export function rankJunglers(junglerIds, enemyIds, matchups, unavailableIds = []) {
   const enemies = Array.from(new Set(enemyIds.filter(Boolean)));
   if (enemies.length === 0) return { ranked: [], recommended: null };
+  const excluded = new Set([...enemies, ...unavailableIds]);
 
   const ranked = Array.from(new Set(junglerIds))
-    .filter((id) => !enemies.includes(id))
+    .filter((id) => !excluded.has(id))
     .map((id) => {
       const data = (matchups && matchups[id]) || {};
       let points = 0;

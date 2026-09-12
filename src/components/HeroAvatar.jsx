@@ -2,7 +2,8 @@ import { useEffect, useState } from 'react';
 import { HERO_BY_ID } from '../data/heroes.js';
 import { Icons } from './Icons.jsx';
 
-const SIZE_CLASSES = { sm: 'w-10 h-10 text-xs', md: 'w-14 h-14 text-sm', lg: 'w-20 h-20 text-base', xl: 'w-24 h-24 text-xl' };
+// `fill` stretches the avatar to its container, for slots sized by the layout.
+const SIZE_CLASSES = { sm: 'w-10 h-10 text-xs', md: 'w-14 h-14 text-sm', lg: 'w-20 h-20 text-base', xl: 'w-24 h-24 text-xl', fill: 'w-full h-full text-xs' };
 
 export const heroName = (heroId) => (HERO_BY_ID[heroId] ? HERO_BY_ID[heroId].name : heroId);
 
