@@ -55,7 +55,7 @@
         const { useState, useEffect, useMemo, useCallback, useRef } = React;
 
         if (!window.JunglerHeroes || !window.JunglerEngine) {
-            document.getElementById('root').innerHTML = '<div style="padding:40px;font-family:system-ui;color:#fca5a5">JunglerOS could not load heroes.js and engine.js. Keep both files in the same folder as mlbb2.html, then reload.</div>';
+            document.getElementById('root').innerHTML = '<div style="padding:40px;font-family:system-ui;color:#fca5a5">JunglerOS could not load heroes.js and engine.js. Keep both files in the same folder as index.html, then reload.</div>';
             throw new Error('heroes.js or engine.js did not load');
         }
 

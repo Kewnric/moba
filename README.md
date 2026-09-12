@@ -4,13 +4,13 @@ A Mobile Legends: Bang Bang draft helper for junglers. Enter the enemy lineup, r
 
 ## Run it
 
-Open `mlbb2.html` in a browser. Keep `heroes.js` and `engine.js` in the same folder; the page loads them.
+Use it online at https://kewnric.github.io/moba/, or open `index.html` in a browser. Keep `heroes.js` and `engine.js` in the same folder; the page loads them.
 
 ## Files
 
 | File | What it holds |
 | --- | --- |
-| `mlbb2.html` | The app (React and Tailwind from CDNs, compiled in the browser) |
+| `index.html` | The app (React and Tailwind from CDNs, compiled in the browser) |
 | `engine.js` | Draft logic: enemy slots, jungler ranking, safe saving |
 | `heroes.js` | Roster of 133 heroes with their lanes, plus official portrait URLs |
 | `tests/` | Node tests for `engine.js` and `heroes.js` |
