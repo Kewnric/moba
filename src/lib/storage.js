@@ -1,12 +1,6 @@
 // Browser saves that never throw: unreadable data falls back to defaults (keeping a backup copy),
 // and failed writes are reported instead of crashing the app.
 
-export const STORAGE_KEYS = {
-  matchups: 'moba_matchup_data_v1',
-  junglers: 'moba_jungler_list_v1',
-  images: 'moba_custom_images_v1',
-};
-
 export const isPlainObject = (value) => value !== null && typeof value === 'object' && !Array.isArray(value);
 export const isStringArray = (value) => Array.isArray(value) && value.every((item) => typeof item === 'string');
 
@@ -40,6 +34,15 @@ export function createSafeStorage(getStorage, onError = () => {}) {
         return true;
       } catch (error) {
         report('write', key, error);
+        return false;
+      }
+    },
+    remove(key) {
+      try {
+        getStorage().removeItem(key);
+        return true;
+      } catch (error) {
+        report('remove', key, error);
         return false;
       }
     },

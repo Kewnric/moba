@@ -1,20 +1,23 @@
 import { useEffect, useState } from 'react';
-import { HERO_IMAGES } from '../data/heroes.js';
+import { HERO_BY_ID } from '../data/heroes.js';
 import { Icons } from './Icons.jsx';
 
 const SIZE_CLASSES = { sm: 'w-10 h-10 text-xs', md: 'w-14 h-14 text-sm', lg: 'w-20 h-20 text-base', xl: 'w-24 h-24 text-xl' };
 
-export const getHeroImage = (name, customImages = {}) => {
-    if (customImages && customImages[name]) return customImages[name];
-    return HERO_IMAGES[name] || null;
-};
+export const heroName = (heroId) => (HERO_BY_ID[heroId] ? HERO_BY_ID[heroId].name : heroId);
 
-export default function HeroAvatar({ name, role, size = 'md', className = '', showTooltip = true, quickNote = null, onEditNote = null, customImages = {}, setTooltip }) {
+const laneLabel = (heroId) => (HERO_BY_ID[heroId] ? HERO_BY_ID[heroId].lanes.join(' / ') : '');
+
+const getHeroImage = (heroId, customImages = {}) =>
+    (customImages && customImages[heroId]) || (HERO_BY_ID[heroId] && HERO_BY_ID[heroId].image) || null;
+
+export default function HeroAvatar({ heroId, size = 'md', className = '', showTooltip = true, quickNote = null, onEditNote = null, customImages = {}, setTooltip }) {
     const [imgError, setImgError] = useState(false);
-    const imageSrc = getHeroImage(name, customImages);
+    const name = heroName(heroId);
+    const imageSrc = getHeroImage(heroId, customImages);
     const showImage = imageSrc && !imgError;
 
-    useEffect(() => { setImgError(false); }, [name, imageSrc]);
+    useEffect(() => { setImgError(false); }, [heroId, imageSrc]);
 
     const handleMouseEnter = (e) => {
         if (showTooltip && setTooltip) {
@@ -23,7 +26,7 @@ export default function HeroAvatar({ name, role, size = 'md', className = '', sh
                 visible: true,
                 x: rect.left + rect.width / 2,
                 y: rect.top - 10,
-                content: { name, role, quickNote }
+                content: { name, role: laneLabel(heroId), quickNote }
             });
         }
     };

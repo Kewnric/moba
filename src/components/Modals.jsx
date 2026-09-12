@@ -31,15 +31,19 @@ export function QuickTipModal({ heroName, text, onChange, onCancel, onSave }) {
     );
 }
 
-export function AddJunglerModal({ name, onChange, onCancel, onAdd }) {
+// Picks a hero to add to the jungler roster; `options` are the heroes not in it yet.
+export function AddJunglerModal({ options, value, onChange, onCancel, onAdd }) {
     return (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-sm animate-fadeIn">
             <div className="bg-slate-900 border border-green-500/30 p-4 rounded-2xl w-80 shadow-2xl">
-                <h3 className="text-sm font-bold text-green-400 mb-3 flex items-center gap-2"><Icons.Plus size={14} /> Add Custom Jungler</h3>
-                <input type="text" className="w-full bg-slate-800 border border-white/10 rounded px-3 py-2 text-sm text-white focus:outline-none focus:border-green-500 mb-4" placeholder="Hero Name (e.g. Gusion)" value={name} onChange={(e) => onChange(e.target.value)} />
+                <h3 className="text-sm font-bold text-green-400 mb-3 flex items-center gap-2"><Icons.Plus size={14} /> Add Jungler</h3>
+                <select className="w-full bg-slate-800 border border-white/10 rounded px-3 py-2 text-sm text-white focus:outline-none focus:border-green-500 mb-4" value={value} onChange={(e) => onChange(e.target.value)}>
+                    <option value="" disabled>Choose a hero...</option>
+                    {options.map(option => <option key={option.id} value={option.id}>{option.name}</option>)}
+                </select>
                 <div className="flex justify-end gap-2">
                     <button onClick={onCancel} className="px-3 py-1 rounded text-xs text-gray-400 hover:text-white">Cancel</button>
-                    <button onClick={onAdd} className="px-3 py-1 rounded bg-green-600 hover:bg-green-500 text-white text-xs font-bold shadow-lg">Add Hero</button>
+                    <button onClick={onAdd} disabled={!value} className="px-3 py-1 rounded bg-green-600 hover:bg-green-500 text-white text-xs font-bold shadow-lg disabled:opacity-40 disabled:cursor-not-allowed">Add Hero</button>
                 </div>
             </div>
         </div>

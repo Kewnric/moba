@@ -33,9 +33,12 @@ Needs Node 22 or newer.
 | `src/views/` | The Draft Lab, Database, Assets and Data Hub screens |
 | `src/components/` | Hero pool, avatars, radar chart, dialogs and the crash screen |
 | `src/lib/engine.js` | Draft logic: enemy slots and jungler ranking |
+| `src/lib/dataReducer.js` | Every change to your roster, ratings and notes |
+| `src/lib/saveData.js` | Saved-data format, upgrades from older saves, backup import and export |
 | `src/lib/storage.js` | Browser saving that falls back safely when data is unreadable |
-| `src/data/heroes.js` | All 133 heroes, their lanes and official portrait URLs |
-| `tests/` | Tests for the draft logic, saving and hero data |
+| `src/lib/heroIds.js` | Hero ids and name lookup |
+| `src/data/heroes.js` | All 133 heroes: id, lanes, official roles and specialities, portrait |
+| `tests/` | Tests for the draft logic, saved data and hero data |
 
 ## How picks are ranked
 
@@ -44,6 +47,12 @@ Needs Node 22 or newer.
 - A jungler's score is its average rating, pulled toward 5 (even) when only a few matchups are rated.
 - A jungler is recommended only when it's rated against at least half of the enemies entered. Otherwise the app shows "Not enough ratings" and the best partly rated options.
 
+## Your saved data
+
+Your roster, ratings, notes and custom icons are saved in the browser you use JunglerOS in. Data Hub exports them to a backup file and restores backups from any version of the app.
+
+Saves are keyed by hero id, not display name. The first time this version opens, it upgrades an older name-based save automatically, leaves the old copy in place, and lists any names that didn't match a hero.
+
 ## Updating the roster
 
-When a new hero releases, add them to their lane list(s) in `src/data/heroes.js` and add their portrait file to `IMAGE_FILES`. Then run `npm test` and `npm run build`.
+When a new hero releases, add a row for them in `src/data/heroes.js`. The `id` is the hero's name in lowercase with dashes (for example `yi-sun-shin`). Never change an existing id, because saved ratings use it. Then run `npm test` and `npm run build`.

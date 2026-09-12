@@ -1,10 +1,13 @@
-import { useEffect, useMemo, useState } from 'react';
-import { HERO_ROLES, RAW_HERO_DATA } from './data/heroes.js';
+import { useEffect, useMemo, useReducer, useState } from 'react';
+import { HEROES } from './data/heroes.js';
 import { rankJunglers } from './lib/engine.js';
-import { STORAGE_KEYS, createSafeStorage, isPlainObject, isStringArray } from './lib/storage.js';
+import { dataReducer } from './lib/dataReducer.js';
+import { STORAGE_KEYS, buildExport, clearSave, countRatings, loadSave, normalizeImport } from './lib/saveData.js';
+import { createSafeStorage } from './lib/storage.js';
 import { compressImage, downloadJson } from './lib/files.js';
 import { Icons } from './components/Icons.jsx';
 import GlobalTooltip from './components/GlobalTooltip.jsx';
+import { heroName } from './components/HeroAvatar.jsx';
 import { AddJunglerModal, QuickTipModal, TacticalNoteModal } from './components/Modals.jsx';
 import DraftLab from './views/DraftLab.jsx';
 import DatabaseEditor from './views/DatabaseEditor.jsx';
@@ -18,77 +21,67 @@ const NAV_TABS = [
     { id: 'data', label: 'Data Hub', icon: Icons.Database, activeClass: 'bg-emerald-600' },
 ];
 
+const WRITE_FAILED = "Your last change couldn't be saved because browser storage is full or blocked. Export a backup from Data Hub before closing this tab.";
+
+// Loads the save once at startup, collecting storage problems instead of reporting them mid-render.
+const readStartupSave = () => {
+    const problems = [];
+    const startupStorage = createSafeStorage(() => window.localStorage, (problem) => problems.push(problem));
+    return { ...loadSave(startupStorage), problems };
+};
+
+const startupWarning = ({ problems, unmatched }) => {
+    if (problems.length) return "Saved data couldn't be loaded, so defaults are showing. Nothing was deleted.";
+    if (unmatched.length) return `Your saved data was upgraded. These names didn't match a hero and were left out: ${unmatched.join(', ')}.`;
+    return null;
+};
+
 export default function App() {
+    const [startup] = useState(readStartupSave);
+    const [data, dispatch] = useReducer(dataReducer, startup.data);
+    const [customImages, setCustomImages] = useState(startup.images);
+    const [storageWarning, setStorageWarning] = useState(() => startupWarning(startup));
+
     const [view, setView] = useState('draft');
     const [enemySlots, setEnemySlots] = useState([null, null, null, null, null]);
-
-    // Database state
-    const [junglerList, setJunglerList] = useState(RAW_HERO_DATA[HERO_ROLES.JUNGLE]);
-    const [matchupData, setMatchupData] = useState({});
-    const [customImages, setCustomImages] = useState({});
     const [editorJungler, setEditorJungler] = useState(null);
-
-    // Modal state
-    const [editingCommentHero, setEditingCommentHero] = useState(null);
-    const [commentText, setCommentText] = useState('');
-    const [editingQuickNoteHero, setEditingQuickNoteHero] = useState(null);
-    const [quickNoteText, setQuickNoteText] = useState('');
+    const [editingNote, setEditingNote] = useState(null); // { field: 'quickNote' | 'comment', enemyId, text }
     const [isAddingJungler, setIsAddingJungler] = useState(false);
-    const [newJunglerName, setNewJunglerName] = useState('');
-
+    const [newJunglerId, setNewJunglerId] = useState('');
     const [draggingSource, setDraggingSource] = useState(null);
     const [tooltipState, setTooltipState] = useState({ visible: false, x: 0, y: 0, content: null });
-    const [storageWarning, setStorageWarning] = useState(null);
 
     const storage = useMemo(() => createSafeStorage(() => window.localStorage, ({ action, key, error }) => {
         console.warn(`JunglerOS could not ${action} "${key}"`, error);
-        setStorageWarning(action === 'write'
-            ? "Your last change couldn't be saved because browser storage is full or blocked. Export a backup from Data Hub before closing this tab."
-            : "Saved data couldn't be loaded, so defaults are showing. Nothing was deleted.");
+        if (action === 'write') setStorageWarning(WRITE_FAILED);
     }), []);
 
-    useEffect(() => {
-        setMatchupData(storage.read(STORAGE_KEYS.matchups, {}, isPlainObject));
-        setJunglerList(storage.read(STORAGE_KEYS.junglers, RAW_HERO_DATA[HERO_ROLES.JUNGLE], isStringArray));
-        setCustomImages(storage.read(STORAGE_KEYS.images, {}, isPlainObject));
-    }, [storage]);
-
-    const saveToStorage = (newData) => { setMatchupData(newData); storage.write(STORAGE_KEYS.matchups, newData); };
-    const saveJunglerList = (newList) => { setJunglerList(newList); storage.write(STORAGE_KEYS.junglers, newList); };
-    const saveCustomImages = (newImages) => { setCustomImages(newImages); storage.write(STORAGE_KEYS.images, newImages); };
+    // Save after every change. The startup state is already what's stored, so it isn't written back.
+    useEffect(() => { if (data !== startup.data) storage.write(STORAGE_KEYS.data, data); }, [data, startup, storage]);
+    useEffect(() => { if (customImages !== startup.images) storage.write(STORAGE_KEYS.images, customImages); }, [customImages, startup, storage]);
 
     const handleAddJungler = () => {
-        if (newJunglerName.trim() && !junglerList.includes(newJunglerName.trim())) {
-            saveJunglerList([...junglerList, newJunglerName.trim()]);
-            setEditorJungler(newJunglerName.trim());
-            setNewJunglerName(''); setIsAddingJungler(false);
-        }
+        if (!newJunglerId) return;
+        dispatch({ type: 'addJungler', junglerId: newJunglerId });
+        setEditorJungler(newJunglerId);
+        setNewJunglerId(''); setIsAddingJungler(false);
     };
 
     const handleDeleteJungler = () => {
         if (!editorJungler) return;
-        if (confirm(`Delete ${editorJungler} from roster?`)) {
-            const newList = junglerList.filter(j => j !== editorJungler);
-            saveJunglerList(newList);
-            const newMatchupData = { ...matchupData };
-            delete newMatchupData[editorJungler];
-            saveToStorage(newMatchupData);
+        if (confirm(`Delete ${heroName(editorJungler)} from roster?`)) {
+            dispatch({ type: 'removeJungler', junglerId: editorJungler });
             setEditorJungler(null);
         }
     };
 
-    const handleAssetUpload = (e, heroName) => {
+    const handleAssetUpload = (e, heroId) => {
         const file = e.target.files[0];
-        if (file) {
-            compressImage(file, (base64) => {
-                saveCustomImages({ ...customImages, [heroName]: base64 });
-            });
-        }
+        if (file) compressImage(file, (base64) => setCustomImages(images => ({ ...images, [heroId]: base64 })));
     };
 
     const handleExport = () => {
-        const exportData = { version: "1.3", timestamp: new Date().toISOString(), matchupData, junglerList, customImages };
-        downloadJson(exportData, `jungleros_full_backup_${new Date().toISOString().slice(0, 10)}.json`);
+        downloadJson(buildExport(data, customImages), `jungleros_full_backup_${new Date().toISOString().slice(0, 10)}.json`);
     };
 
     const handleImport = (e) => {
@@ -97,52 +90,58 @@ export default function App() {
         const reader = new FileReader();
         reader.onload = (ev) => {
             try {
-                const imported = JSON.parse(ev.target.result);
-                if (!imported.matchupData && !imported.junglerList) throw new Error("Invalid file");
-                if (imported.junglerList) saveJunglerList(imported.junglerList);
-                if (imported.matchupData) saveToStorage(imported.matchupData);
-                if (imported.customImages) saveCustomImages(imported.customImages);
-                alert(`Restored: ${Object.keys(imported.customImages || {}).length} Assets, ${imported.junglerList?.length || 0} Junglers`);
-            } catch { alert("Error parsing file."); }
+                const imported = normalizeImport(JSON.parse(ev.target.result));
+                dispatch({ type: 'load', data: imported.data });
+                setCustomImages(imported.images);
+                setEditorJungler(null);
+                const skipped = imported.unmatched.length ? ` Skipped names that aren't heroes: ${imported.unmatched.join(', ')}.` : '';
+                alert(`Restored ${imported.data.junglers.length} junglers, ${countRatings(imported.data.matchups)} ratings and ${Object.keys(imported.images).length} icons.${skipped}`);
+            } catch (error) {
+                alert(error instanceof SyntaxError ? "That file isn't valid JSON, so nothing was restored." : `${error.message} Nothing was restored.`);
+            }
         };
         reader.readAsText(file);
         e.target.value = null;
     };
 
-    const saveComment = () => {
-        const d = { ...matchupData };
-        if (!d[editorJungler]) d[editorJungler] = {};
-        d[editorJungler][editingCommentHero] = { ...(d[editorJungler][editingCommentHero] || { tier: 'B' }), comment: commentText };
-        saveToStorage(d); setEditingCommentHero(null); setCommentText('');
+    const handleReset = () => {
+        if (confirm("Are you sure? This will wipe all data.")) {
+            clearSave(storage);
+            window.location.reload();
+        }
     };
 
-    const saveQuickNote = () => {
-        const d = { ...matchupData };
-        if (!d[editorJungler]) d[editorJungler] = {};
-        d[editorJungler][editingQuickNoteHero] = { ...(d[editorJungler][editingQuickNoteHero] || { tier: 'B' }), quickNote: quickNoteText };
-        saveToStorage(d); setEditingQuickNoteHero(null); setQuickNoteText('');
+    const saveNote = () => {
+        const type = editingNote.field === 'quickNote' ? 'setQuickNote' : 'setComment';
+        dispatch({ type, junglerId: editorJungler, enemyId: editingNote.enemyId, text: editingNote.text });
+        setEditingNote(null);
     };
 
-    const handleDragStart = (e, hero, source, index = null) => {
-        e.dataTransfer.setData('hero', JSON.stringify(hero));
+    const handleDragStart = (e, heroId, source, index = null) => {
+        e.dataTransfer.setData('hero', heroId);
         e.dataTransfer.setData('source', source);
         if (index !== null) e.dataTransfer.setData('slotIndex', index);
         setDraggingSource(source);
     };
     const handleDragEnd = () => setDraggingSource(null);
 
-    const enemyNames = useMemo(() => enemySlots.filter(Boolean).map(s => s.name), [enemySlots]);
+    const enemyIds = useMemo(() => enemySlots.filter(Boolean), [enemySlots]);
 
     const { ranked: sortedJunglers, recommended: priorityPick } = useMemo(
-        () => rankJunglers(junglerList, enemyNames, matchupData),
-        [junglerList, enemyNames, matchupData]
+        () => rankJunglers(data.junglers, enemyIds, data.matchups),
+        [data, enemyIds]
     );
 
-    const stats = useMemo(() => {
-        let matchupCount = 0;
-        Object.values(matchupData).forEach(d => matchupCount += Object.keys(d).length);
-        return { junglerCount: junglerList.length, imageCount: Object.keys(customImages).length, matchupCount };
-    }, [junglerList, customImages, matchupData]);
+    const stats = useMemo(() => ({
+        junglerCount: data.junglers.length,
+        imageCount: Object.keys(customImages).length,
+        matchupCount: countRatings(data.matchups),
+    }), [data, customImages]);
+
+    const addJunglerOptions = useMemo(
+        () => HEROES.filter(hero => !data.junglers.includes(hero.id)).map(hero => ({ id: hero.id, name: hero.name })),
+        [data.junglers]
+    );
 
     const dragProps = { draggingSource, onDragStart: handleDragStart, onDragEnd: handleDragEnd };
 
@@ -174,7 +173,7 @@ export default function App() {
                     <DraftLab
                         enemySlots={enemySlots}
                         setEnemySlots={setEnemySlots}
-                        enemyNames={enemyNames}
+                        enemyIds={enemyIds}
                         sortedJunglers={sortedJunglers}
                         priorityPick={priorityPick}
                         customImages={customImages}
@@ -185,27 +184,33 @@ export default function App() {
                 )}
                 {view === 'editor' && (
                     <DatabaseEditor
-                        junglerList={junglerList}
-                        matchupData={matchupData}
+                        junglers={data.junglers}
+                        matchups={data.matchups}
                         editorJungler={editorJungler}
                         setEditorJungler={setEditorJungler}
+                        dispatch={dispatch}
                         onAddJungler={() => setIsAddingJungler(true)}
                         onDeleteJungler={handleDeleteJungler}
-                        onSaveMatchups={saveToStorage}
+                        onEditQuickNote={(enemyId, text) => setEditingNote({ field: 'quickNote', enemyId, text })}
+                        onEditComment={(enemyId, text) => setEditingNote({ field: 'comment', enemyId, text })}
                         customImages={customImages}
                         setTooltip={setTooltipState}
-                        onEditQuickNote={(heroName, note) => { setEditingQuickNoteHero(heroName); setQuickNoteText(note); }}
-                        onEditComment={(heroName, comment) => { setEditingCommentHero(heroName); setCommentText(comment); }}
                         {...dragProps}
                     />
                 )}
                 {view === 'assets' && <AssetManager customImages={customImages} onUpload={handleAssetUpload} />}
-                {view === 'data' && <DataHub stats={stats} onExport={handleExport} onImport={handleImport} />}
+                {view === 'data' && <DataHub stats={stats} onExport={handleExport} onImport={handleImport} onReset={handleReset} />}
             </main>
 
-            {editingCommentHero && <TacticalNoteModal heroName={editingCommentHero} text={commentText} onChange={setCommentText} onCancel={() => setEditingCommentHero(null)} onSave={saveComment} />}
-            {editingQuickNoteHero && <QuickTipModal heroName={editingQuickNoteHero} text={quickNoteText} onChange={setQuickNoteText} onCancel={() => setEditingQuickNoteHero(null)} onSave={saveQuickNote} />}
-            {isAddingJungler && <AddJunglerModal name={newJunglerName} onChange={setNewJunglerName} onCancel={() => setIsAddingJungler(false)} onAdd={handleAddJungler} />}
+            {editingNote && editingNote.field === 'comment' && (
+                <TacticalNoteModal heroName={heroName(editingNote.enemyId)} text={editingNote.text} onChange={(text) => setEditingNote({ ...editingNote, text })} onCancel={() => setEditingNote(null)} onSave={saveNote} />
+            )}
+            {editingNote && editingNote.field === 'quickNote' && (
+                <QuickTipModal heroName={heroName(editingNote.enemyId)} text={editingNote.text} onChange={(text) => setEditingNote({ ...editingNote, text })} onCancel={() => setEditingNote(null)} onSave={saveNote} />
+            )}
+            {isAddingJungler && (
+                <AddJunglerModal options={addJunglerOptions} value={newJunglerId} onChange={setNewJunglerId} onCancel={() => { setIsAddingJungler(false); setNewJunglerId(''); }} onAdd={handleAddJungler} />
+            )}
         </div>
     );
 }

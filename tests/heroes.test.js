@@ -1,34 +1,43 @@
 import { test } from 'vitest';
 import assert from 'node:assert/strict';
-import { HERO_ROLES, RAW_HERO_DATA, HERO_IMAGES } from '../src/data/heroes.js';
-import { buildHeroList } from '../src/lib/engine.js';
+import { LANES, HEROES, HERO_BY_ID } from '../src/data/heroes.js';
+import { slugify } from '../src/lib/heroIds.js';
 
-const heroes = buildHeroList(RAW_HERO_DATA);
-const byName = Object.fromEntries(heroes.map((hero) => [hero.name, hero]));
+const byName = Object.fromEntries(HEROES.map((hero) => [hero.name, hero]));
 
 test('roster has all 133 heroes', () => {
-  assert.equal(heroes.length, 133);
+  assert.equal(HEROES.length, 133);
+});
+
+test('every hero id is a unique slug of the hero name', () => {
+  assert.equal(new Set(HEROES.map((hero) => hero.id)).size, HEROES.length);
+  for (const hero of HEROES) assert.equal(hero.id, slugify(hero.name), hero.name);
+});
+
+test('HERO_BY_ID finds a hero by id', () => {
+  assert.equal(HERO_BY_ID['yi-sun-shin'].name, 'Yi Sun-Shin');
+  assert.equal(HERO_BY_ID['chang-e'].name, "Chang'e");
 });
 
 test('roster includes the newest heroes in their official lanes', () => {
-  assert.deepEqual(byName.Marcel.roles, [HERO_ROLES.ROAM]);
-  assert.deepEqual(byName.Obsidia.roles, [HERO_ROLES.GOLD]);
-  assert.deepEqual(byName.Sora.roles, [HERO_ROLES.EXP]);
-  assert.deepEqual(byName.Hirara.roles, [HERO_ROLES.JUNGLE]);
+  assert.deepEqual(byName.Marcel.lanes, [LANES.ROAM]);
+  assert.deepEqual(byName.Obsidia.lanes, [LANES.GOLD]);
+  assert.deepEqual(byName.Sora.lanes, [LANES.EXP]);
+  assert.deepEqual(byName.Hirara.lanes, [LANES.JUNGLE]);
 });
 
-test('every hero has a portrait URL', () => {
-  const missing = heroes.filter((hero) => !/^https:\/\/\S+\.png$/.test(HERO_IMAGES[hero.name] || ''));
-  assert.deepEqual(missing.map((hero) => hero.name), []);
-});
-
-test('portrait map only names heroes in the roster', () => {
-  assert.deepEqual(Object.keys(HERO_IMAGES).filter((name) => !byName[name]), []);
-});
-
-test('junglers who also play other lanes still show under Jungling', () => {
-  const junglers = heroes.filter((hero) => hero.roles.includes(HERO_ROLES.JUNGLE)).map((hero) => hero.name);
+test('junglers who also play other lanes are listed under Jungling', () => {
   for (const name of ['Balmond', 'Saber', 'Alice', 'Natalia', 'Popol and Kupa', 'Lukas', 'Hirara']) {
-    assert.ok(junglers.includes(name), `${name} is missing from Jungling`);
+    assert.ok(byName[name].lanes.includes(LANES.JUNGLE), `${name} is missing from Jungling`);
   }
+});
+
+test('every hero has a lane, an official role and a portrait', () => {
+  const incomplete = HEROES.filter((hero) =>
+    !hero.lanes.length || !hero.roles.length || !/^https:\/\/\S+\.png$/.test(hero.image));
+  assert.deepEqual(incomplete.map((hero) => hero.name), []);
+});
+
+test('official roles come from the game data', () => {
+  assert.deepEqual(byName.Ling.roles, ['Assassin']);
 });

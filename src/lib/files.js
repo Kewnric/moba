@@ -1,4 +1,4 @@
-import { STORAGE_KEYS } from './storage.js';
+import { STORAGE_KEYS } from './saveData.js';
 
 export const compressImage = (file, callback) => {
     const reader = new FileReader();

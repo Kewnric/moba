@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { ALL_HEROES, heroRoleLabel } from '../data/roster.js';
+import { HEROES } from '../data/heroes.js';
 import { Icons } from '../components/Icons.jsx';
 import HeroAvatar from '../components/HeroAvatar.jsx';
 
@@ -15,14 +15,14 @@ export default function AssetManager({ customImages, onUpload }) {
             </div>
             <div className="flex-1 p-8 overflow-y-auto scrollbar-hide">
                 <div className="grid grid-cols-4 md:grid-cols-6 lg:grid-cols-8 gap-4">
-                    {ALL_HEROES.filter(h => h.name.toLowerCase().includes(search.toLowerCase())).map(hero => (
-                        <label key={hero.name} className="relative group cursor-pointer">
-                            <HeroAvatar name={hero.name} role={heroRoleLabel(hero)} size="lg" showTooltip={false} customImages={customImages} />
+                    {HEROES.filter(h => h.name.toLowerCase().includes(search.toLowerCase())).map(hero => (
+                        <label key={hero.id} className="relative group cursor-pointer">
+                            <HeroAvatar heroId={hero.id} size="lg" showTooltip={false} customImages={customImages} />
                             <div className="absolute inset-0 bg-black/60 opacity-0 group-hover:opacity-100 flex items-center justify-center transition-opacity rounded-xl">
                                 <Icons.Upload className="text-white" size={24} />
                             </div>
                             <div className="text-center text-xs mt-2 text-gray-400">{hero.name}</div>
-                            <input type="file" className="hidden" accept="image/*" onChange={(e) => onUpload(e, hero.name)} />
+                            <input type="file" className="hidden" accept="image/*" onChange={(e) => onUpload(e, hero.id)} />
                         </label>
                     ))}
                 </div>

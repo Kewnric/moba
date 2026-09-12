@@ -1,13 +1,6 @@
 import { Icons } from '../components/Icons.jsx';
 
-export default function DataHub({ stats, onExport, onImport }) {
-    const handleReset = () => {
-        if (confirm("Are you sure? This will wipe all data.")) {
-            localStorage.clear();
-            window.location.reload();
-        }
-    };
-
+export default function DataHub({ stats, onExport, onImport, onReset }) {
     return (
         <div className="flex-1 flex flex-col items-center justify-center w-full animate-fadeIn bg-[url('https://www.transparenttextures.com/patterns/carbon-fibre.png')]">
             <div className="glass-panel p-10 rounded-2xl w-full max-w-2xl border border-cyan-500/20 shadow-2xl">
@@ -32,7 +25,7 @@ export default function DataHub({ stats, onExport, onImport }) {
                         <span>Roster: <span className="text-white">{stats.junglerCount}</span></span>
                         <span>Assets: <span className="text-white">{stats.imageCount}</span></span>
                     </div>
-                    <button onClick={handleReset} className="text-red-400 hover:text-red-300 underline">Reset to Factory Defaults</button>
+                    <button onClick={onReset} className="text-red-400 hover:text-red-300 underline">Reset to Factory Defaults</button>
                 </div>
             </div>
         </div>

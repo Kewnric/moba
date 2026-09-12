@@ -1,4 +1,5 @@
 import { Icons } from './Icons.jsx';
+import { heroName } from './HeroAvatar.jsx';
 
 export default function RadarChart({ heroes, onSelect, currentHero, page, setPage }) {
     const size = 240; const center = size / 2; const radius = 75;
@@ -9,7 +10,10 @@ export default function RadarChart({ heroes, onSelect, currentHero, page, setPag
 
     const displayHeroes = [...heroes];
     // Ensure we have enough placeholders for current page
-    while (displayHeroes.length < endIndex) displayHeroes.push({ name: `Alt ${displayHeroes.length + 1}`, score: 0, isPlaceholder: true });
+    while (displayHeroes.length < endIndex) {
+        const number = displayHeroes.length + 1;
+        displayHeroes.push({ id: `alt-${number}`, label: `Alt ${number}`, score: 0, isPlaceholder: true });
+    }
 
     const currentBatch = displayHeroes.slice(startIndex, endIndex);
     const maxScore = Math.max(...heroes.map(h => h.score)) || 1; // Max of ALL heroes for consistent scale
@@ -43,11 +47,11 @@ export default function RadarChart({ heroes, onSelect, currentHero, page, setPag
                 {currentBatch.map((hero, i) => {
                     const angle = (Math.PI * 2 * i) / 6 - Math.PI / 2;
                     const x = center + (radius + 30) * Math.cos(angle); const y = center + (radius + 15) * Math.sin(angle);
-                    const isSelected = currentHero && currentHero.name === hero.name;
+                    const isSelected = currentHero && currentHero.id === hero.id;
                     return (
                         <g key={i} onClick={() => !hero.isPlaceholder && onSelect(hero)} className={hero.isPlaceholder ? '' : 'cursor-pointer group'}>
                             <circle cx={x} cy={y} r="20" fill="transparent" />
-                            <text x={x} y={y} fill={isSelected ? "#22d3ee" : (hero.isPlaceholder ? "#475569" : "#94a3b8")} fontSize={isSelected ? "11" : "9"} textAnchor="middle" dominantBaseline="middle" fontWeight="bold" className="transition-all duration-200 group-hover:fill-white group-hover:text-xs">{hero.name}</text>
+                            <text x={x} y={y} fill={isSelected ? "#22d3ee" : (hero.isPlaceholder ? "#475569" : "#94a3b8")} fontSize={isSelected ? "11" : "9"} textAnchor="middle" dominantBaseline="middle" fontWeight="bold" className="transition-all duration-200 group-hover:fill-white group-hover:text-xs">{hero.isPlaceholder ? hero.label : heroName(hero.id)}</text>
                             {!hero.isPlaceholder && <text x={x} y={y + 12} fill={isSelected ? "#22d3ee" : "#64748b"} fontSize="8" textAnchor="middle" dominantBaseline="middle">{hero.rated ? hero.score.toFixed(1) : '—'}</text>}
                         </g>
                     );

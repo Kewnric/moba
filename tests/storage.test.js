@@ -1,15 +1,7 @@
 import { test } from 'vitest';
 import assert from 'node:assert/strict';
 import { createSafeStorage, isPlainObject, isStringArray } from '../src/lib/storage.js';
-
-const memoryStorage = (initial = {}) => {
-  const items = new Map(Object.entries(initial));
-  return {
-    getItem: (key) => (items.has(key) ? items.get(key) : null),
-    setItem: (key, value) => { items.set(key, String(value)); },
-    removeItem: (key) => { items.delete(key); },
-  };
-};
+import { memoryStorage } from './helpers/memoryStorage.js';
 
 test('createSafeStorage reads saved JSON', () => {
   const store = createSafeStorage(() => memoryStorage({ list: '["Ling"]' }));
@@ -34,6 +26,7 @@ test('createSafeStorage falls back when storage is blocked', () => {
   const store = createSafeStorage(() => { throw new Error('SecurityError'); }, () => {});
   assert.deepEqual(store.read('list', ['Ling']), ['Ling']);
   assert.equal(store.write('list', ['Fanny']), false);
+  assert.equal(store.remove('list'), false);
 });
 
 test('createSafeStorage reports a failed write', () => {
@@ -42,6 +35,13 @@ test('createSafeStorage reports a failed write', () => {
   const store = createSafeStorage(() => full, (error) => errors.push(error));
   assert.equal(store.write('images', { Ling: 'data:' }), false);
   assert.equal(errors.length, 1);
+});
+
+test('createSafeStorage removes a saved key', () => {
+  const storage = memoryStorage({ list: '["Ling"]' });
+  const store = createSafeStorage(() => storage);
+  assert.equal(store.remove('list'), true);
+  assert.equal(storage.getItem('list'), null);
 });
 
 test('isPlainObject accepts objects but not arrays or null', () => {
