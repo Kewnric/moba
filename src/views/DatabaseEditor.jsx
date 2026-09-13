@@ -9,6 +9,8 @@ import HeroPool from '../components/HeroPool.jsx';
 const LANE_FILTERS = ['All', ...Object.values(LANES)];
 const UNRATE = 'unrate';
 const COMFORT_LABELS = { 1: 'Rarely play', 2: 'Learning', 3: 'Comfortable', 4: 'Strong', 5: 'Main' };
+// Only drags that start on this screen carry the 'hero' type, so files or text dragged in are ignored.
+const isRatingDrag = (e) => Array.from(e.dataTransfer.types).includes('hero');
 
 export default function DatabaseEditor({
     junglers,
@@ -31,11 +33,13 @@ export default function DatabaseEditor({
     const [laneFilter, setLaneFilter] = useState('All');
     // The tier a tapped hero gets rated as, UNRATE to remove ratings, or null when tapping does nothing.
     const [quickTier, setQuickTier] = useState(null);
+    const [dragOverTier, setDragOverTier] = useState(null);
     const junglerMatchups = (editorJungler && matchups[editorJungler]) || {};
     const ratedIds = Object.keys(junglerMatchups).filter(enemyId => junglerMatchups[enemyId].tier);
     const unrankedHeroes = filterHeroes(HEROES, { lane: laneFilter, search, hideIds: ratedIds });
     const isRating = Boolean(quickTier) && quickTier !== UNRATE;
     const comfortLevel = (editorJungler && comfort[editorJungler]) || null;
+    const opponents = HEROES.length - 1;
 
     const toggleQuickTier = (tier) => setQuickTier(current => (current === tier ? null : tier));
     const rate = (enemyId, tier) => dispatch({ type: 'setTier', junglerId: editorJungler, enemyId, tier });
@@ -47,31 +51,50 @@ export default function DatabaseEditor({
         else if (quickTier) rate(enemyId, quickTier);
     };
 
-    const handleDropOnUnranked = (e) => {
-        e.preventDefault();
-        const heroId = e.dataTransfer.getData('hero');
-        if (e.dataTransfer.getData('source') === 'tier_item' && editorJungler && heroId) unrate(heroId);
+    const endDrag = () => {
+        setDragOverTier(null);
         onDragEnd();
     };
 
-    const handleDropOnTier = (e, tier) => {
+    const handleDropOnUnranked = (e) => {
+        if (!isRatingDrag(e)) return;
         e.preventDefault();
         const heroId = e.dataTransfer.getData('hero');
-        if (editorJungler && heroId) rate(heroId, tier);
-        onDragEnd();
+        if (e.dataTransfer.getData('source') === 'tier_item' && editorJungler && heroId) unrate(heroId);
+        endDrag();
     };
+
+    // The whole tier row, label included, accepts drops and lights up while a hero is over it.
+    const tierDropProps = (tier) => ({
+        onDragOver: (e) => {
+            if (!isRatingDrag(e)) return;
+            e.preventDefault();
+            e.dataTransfer.dropEffect = 'move';
+            if (dragOverTier !== tier) setDragOverTier(tier);
+        },
+        onDragLeave: (e) => {
+            if (!e.currentTarget.contains(e.relatedTarget) && dragOverTier === tier) setDragOverTier(null);
+        },
+        onDrop: (e) => {
+            if (!isRatingDrag(e)) return;
+            e.preventDefault();
+            const heroId = e.dataTransfer.getData('hero');
+            if (editorJungler && heroId) rate(heroId, tier);
+            endDrag();
+        },
+    });
 
     return (
         <div className="flex-1 flex flex-col w-full min-h-0 animate-fadeIn">
             <div className="bg-slate-900 border-b border-white/10 flex flex-wrap items-center px-3 lg:px-6 py-3 gap-3 lg:gap-6 shrink-0">
-                <div className="flex items-center gap-2 text-yellow-500"><Icons.Edit3 size={18} /><span className="font-bold uppercase text-sm">Editor Mode</span></div>
+                <div className="flex items-center gap-2 text-yellow-500"><Icons.Edit3 size={18} /><span className="font-bold uppercase text-sm">Ratings</span></div>
                 <div className="hidden sm:block h-6 w-px bg-white/10"></div>
                 <div className="flex items-center flex-1 sm:flex-none min-w-0">
                     <select aria-label="Jungler to rate" className="flex-1 sm:flex-none min-w-0 sm:min-w-[180px] bg-slate-800 text-white border border-white/20 rounded-l px-3 lg:px-4 py-2 focus:outline-none focus:border-cyan-500 text-sm font-medium" onChange={(e) => setEditorJungler(e.target.value)} value={editorJungler || ''}>
-                        <option value="" disabled>Select Jungler to Tune...</option>
+                        <option value="" disabled>Choose a jungler to rate...</option>
                         {junglers.map(id => <option key={id} value={id}>{heroName(id)}{comfort[id] ? ` (comfort ${comfort[id]})` : ''}</option>)}
                     </select>
-                    <button type="button" onClick={onAddJungler} className="bg-slate-800 hover:bg-slate-700 text-green-400 border border-white/20 border-l-0 rounded-r px-3 py-2" title="Add New Jungler" aria-label="Add New Jungler"><Icons.Plus size={16} /></button>
+                    <button type="button" onClick={onAddJungler} className="bg-slate-800 hover:bg-slate-700 text-green-400 border border-white/20 border-l-0 rounded-r px-3 py-2" title="Add a jungler to your roster" aria-label="Add a jungler to your roster"><Icons.Plus size={16} /></button>
                 </div>
                 {editorJungler && (
                     <div className="flex items-center gap-1" role="group" aria-label={`How comfortable you are playing ${heroName(editorJungler)}`}>
@@ -85,27 +108,36 @@ export default function DatabaseEditor({
                         <span className="hidden sm:inline text-[10px] text-gray-400 ml-1 w-20">{comfortLevel ? COMFORT_LABELS[comfortLevel] : 'Not set'}</span>
                     </div>
                 )}
-                {editorJungler && <button type="button" onClick={onDeleteJungler} className="flex items-center gap-1 text-xs text-red-400 hover:text-red-300 border border-red-900/50 bg-red-900/20 px-3 py-1.5 rounded hover:bg-red-900/40 transition-colors"><Icons.Trash2 size={12} /> Remove Hero</button>}
+                {editorJungler && <button type="button" onClick={onDeleteJungler} className="flex items-center gap-1 text-xs text-red-400 hover:text-red-300 border border-red-900/50 bg-red-900/20 px-3 py-1.5 rounded hover:bg-red-900/40 transition-colors"><Icons.Trash2 size={12} /> Remove from roster</button>}
             </div>
             {editorJungler ? (
                 <div className="flex-1 min-h-0 flex flex-col lg:flex-row overflow-y-auto lg:overflow-hidden">
                     <div className="lg:flex-1 p-3 lg:p-8 lg:min-h-0 lg:overflow-y-auto scrollbar-hide">
-                        <p className="text-xs text-gray-400 mb-3 lg:mb-4 max-w-2xl">
-                            How does <span className="text-white font-semibold">{heroName(editorJungler)}</span> do against each hero? Choose a tier, then tap heroes to rate them. On desktop you can also drag. The pencil adds a quick tip; the speech bubble adds a longer note. Heroes you don't rate use Mythic win-rate stats at half the weight of your ratings.
-                        </p>
+                        <div className="flex flex-wrap items-end justify-between gap-2 mb-3 lg:mb-4">
+                            <p className="text-xs text-gray-400 max-w-2xl">
+                                How does <span className="text-white font-semibold">{heroName(editorJungler)}</span> do against each hero? Pick a tier and tap heroes, or drag heroes onto a tier row. The pencil adds a quick tip and the speech bubble a longer note. Unrated matchups use Mythic win-rate stats.
+                            </p>
+                            <div className="text-right">
+                                <div className="text-[10px] uppercase tracking-wider text-gray-500">Rated</div>
+                                <div className="text-sm font-mono font-bold text-white">{ratedIds.length}<span className="text-gray-500"> / {opponents}</span></div>
+                            </div>
+                        </div>
+                        <div className="h-1 rounded-full bg-slate-800 overflow-hidden mb-3 lg:mb-5" aria-hidden="true"><div className="h-full bg-purple-500" style={{ width: `${(ratedIds.length / opponents) * 100}%` }} /></div>
                         <div className="space-y-2 lg:space-y-4 pb-4 lg:pb-20">
                             {TIERS.map(tier => {
                                 const items = Object.entries(junglerMatchups).filter(([, entry]) => entry.tier === tier).map(([enemyId, entry]) => ({ enemyId, ...entry }));
+                                const isDropTarget = dragOverTier === tier;
                                 return (
-                                    <div key={tier} className="flex bg-slate-900/50 rounded-lg border border-white/5 hover:border-white/10 transition-all overflow-hidden">
+                                    <div key={tier} {...tierDropProps(tier)}
+                                        className={`flex bg-slate-900/50 rounded-lg border transition-all overflow-hidden ${isDropTarget ? 'border-cyan-300 bg-cyan-500/10 ring-2 ring-cyan-300/50' : 'border-white/5 hover:border-white/10'}`}>
                                         <button type="button" onClick={() => toggleQuickTier(tier)} aria-pressed={quickTier === tier} title={`Tap heroes to rate them ${TIER_LABELS[tier]}`}
                                             className={`w-16 lg:w-24 shrink-0 flex flex-col items-center justify-center py-2 ${TIER_COLORS[tier]} transition-all hover:brightness-110 ${quickTier === tier ? 'ring-inset ring-4 ring-white' : ''}`}>
                                             <span className="text-2xl lg:text-4xl font-black text-black/40 leading-none">{tier}</span>
                                             <span className="mt-1 px-1 text-[9px] lg:text-[10px] font-bold uppercase tracking-wide text-black/60 text-center leading-tight">{TIER_LABELS[tier]}</span>
                                         </button>
-                                        <div className="flex-1 p-2 lg:p-4 flex flex-wrap gap-2 lg:gap-3 min-h-[72px] lg:min-h-[120px] content-start" onDragOver={(e) => e.preventDefault()} onDrop={(e) => handleDropOnTier(e, tier)}>
+                                        <div className="flex-1 p-2 lg:p-4 flex flex-wrap gap-2 lg:gap-3 min-h-[72px] lg:min-h-[120px] content-start">
                                             {items.map(item => (
-                                                <div key={item.enemyId} className="relative group/item" draggable onDragStart={(e) => onDragStart(e, item.enemyId, 'tier_item')} onDragEnd={onDragEnd} onDoubleClick={() => onEditComment(item.enemyId, item.comment || '')}>
+                                                <div key={item.enemyId} className="relative group/item cursor-grab active:cursor-grabbing" draggable onDragStart={(e) => onDragStart(e, item.enemyId, 'tier_item')} onDragEnd={endDrag} onDoubleClick={() => onEditComment(item.enemyId, item.comment || '')}>
                                                     <div role={quickTier ? 'button' : undefined} tabIndex={quickTier ? 0 : undefined} onClick={() => handleRatedHeroTap(item.enemyId)}
                                                         onKeyDown={(e) => { if (quickTier && (e.key === 'Enter' || e.key === ' ')) { e.preventDefault(); handleRatedHeroTap(item.enemyId); } }}
                                                         className={quickTier ? 'cursor-pointer rounded-xl focus:outline-none focus-visible:ring-2 focus-visible:ring-cyan-400' : ''}>
@@ -117,17 +149,18 @@ export default function DatabaseEditor({
                                                     </button>
                                                 </div>
                                             ))}
-                                            {items.length === 0 && <div className="w-full flex items-center justify-center text-white/10 font-bold text-[10px] lg:text-lg uppercase pointer-events-none">No heroes rated {TIER_LABELS[tier]}</div>}
+                                            {items.length === 0 && <div className="w-full self-center text-center text-white/20 font-bold text-[10px] lg:text-sm uppercase tracking-wider pointer-events-none">{isDropTarget ? `Drop to rate ${TIER_LABELS[tier]}` : `No heroes rated ${TIER_LABELS[tier]}`}</div>}
                                         </div>
                                     </div>
                                 );
                             })}
                         </div>
                     </div>
-                    <div className={`lg:w-[350px] lg:shrink-0 bg-slate-900 border-t lg:border-t-0 lg:border-l border-white/10 flex flex-col lg:min-h-0 transition-colors ${draggingSource === 'tier_item' ? 'bg-red-900/10 border-red-500/30' : ''}`} onDragOver={(e) => e.preventDefault()} onDrop={handleDropOnUnranked}>
+                    <div className={`lg:w-[350px] lg:shrink-0 bg-slate-900 border-t lg:border-t-0 lg:border-l border-white/10 flex flex-col lg:min-h-0 transition-colors ${draggingSource === 'tier_item' ? 'bg-red-900/10 border-red-500/30' : ''}`}
+                        onDragOver={(e) => { if (isRatingDrag(e)) e.preventDefault(); }} onDrop={handleDropOnUnranked}>
                         {/* Pinned only on tall phone and tablet screens, so it never covers the heroes you need to tap. */}
                         <div className="[@media(max-width:1023px)_and_(min-height:640px)]:sticky top-0 z-10 bg-slate-900 p-3 lg:p-5 border-b border-white/10 space-y-3">
-                            <div className="flex items-center justify-between gap-2"><h3 className="text-sm font-bold text-white">Unranked Pool</h3><span className="text-[10px] text-gray-500 uppercase tracking-wider">{draggingSource === 'tier_item' ? <span className="text-red-400 animate-pulse font-bold">DROP TO UNRANK</span> : `${unrankedHeroes.length} heroes`}</span></div>
+                            <div className="flex items-center justify-between gap-2"><h3 className="text-sm font-bold text-white">Unrated heroes</h3><span className="text-[10px] text-gray-500 uppercase tracking-wider">{draggingSource === 'tier_item' ? <span className="text-red-400 animate-pulse font-bold">Drop to unrate</span> : `${unrankedHeroes.length} shown`}</span></div>
                             <div className="flex flex-wrap items-center gap-1.5" role="group" aria-label="Rate tapped heroes as">
                                 <span className="text-[10px] uppercase tracking-wider text-gray-500 mr-1">Tap to rate</span>
                                 {TIERS.map(tier => (
@@ -150,7 +183,7 @@ export default function DatabaseEditor({
                             <div className="flex gap-2 overflow-x-auto scrollbar-hide">{LANE_FILTERS.map(lane => <button key={lane} type="button" aria-pressed={laneFilter === lane} onClick={() => setLaneFilter(lane)} className={`shrink-0 text-[10px] px-2 py-1 rounded border ${laneFilter === lane ? 'bg-cyan-500/20 border-cyan-500 text-cyan-400' : 'border-white/10 text-gray-500'}`}>{lane === 'All' ? 'ALL' : lane.split(' ')[0]}</button>)}</div>
                         </div>
                         <div className="lg:flex-1 lg:min-h-0 lg:overflow-y-auto scrollbar-hide bg-slate-950/50 relative">
-                            {draggingSource === 'tier_item' && <div className="absolute inset-0 z-50 bg-red-500/10 flex items-center justify-center border-2 border-dashed border-red-500/50 m-2 rounded-xl pointer-events-none"><span className="text-red-400 font-bold uppercase tracking-widest">Remove Rank</span></div>}
+                            {draggingSource === 'tier_item' && <div className="absolute inset-0 z-50 bg-red-500/10 flex items-center justify-center border-2 border-dashed border-red-500/50 m-2 rounded-xl pointer-events-none"><span className="text-red-400 font-bold uppercase tracking-widest">Remove rating</span></div>}
                             <HeroPool
                                 heroes={unrankedHeroes}
                                 quickNotes={junglerMatchups}
@@ -161,12 +194,12 @@ export default function DatabaseEditor({
                                 setTooltip={setTooltip}
                                 dragSource="unranked_pool"
                                 onDragStart={onDragStart}
-                                onDragEnd={onDragEnd}
+                                onDragEnd={endDrag}
                             />
                         </div>
                     </div>
                 </div>
-            ) : (<div className="flex-1 flex flex-col items-center justify-center text-gray-600 p-6 text-center"><Icons.Edit3 size={48} className="mb-4 opacity-20" /><p className="font-bold uppercase tracking-widest">Select a Jungler to Begin Calibration</p></div>)}
+            ) : (<div className="flex-1 flex flex-col items-center justify-center text-gray-600 p-6 text-center"><Icons.Edit3 size={48} className="mb-4 opacity-20" /><p className="font-bold uppercase tracking-widest">Choose a jungler to start rating matchups</p></div>)}
         </div>
     );
 }

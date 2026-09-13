@@ -1,19 +1,21 @@
 import { STORAGE_KEYS } from './saveData.js';
 
-export const compressImage = (file, callback) => {
+// Crops the middle square of an image and shrinks it to size × size, so portraits keep their proportions.
+export const compressImage = (file, callback, size = 128) => {
     const reader = new FileReader();
-    reader.readAsDataURL(file);
     reader.onload = (event) => {
         const img = new Image();
-        img.src = event.target.result;
         img.onload = () => {
+            const side = Math.min(img.width, img.height);
             const canvas = document.createElement('canvas');
-            const ctx = canvas.getContext('2d');
-            canvas.width = 100; canvas.height = 100;
-            ctx.drawImage(img, 0, 0, 100, 100);
-            callback(canvas.toDataURL('image/jpeg', 0.7));
+            canvas.width = size;
+            canvas.height = size;
+            canvas.getContext('2d').drawImage(img, (img.width - side) / 2, (img.height - side) / 2, side, side, 0, 0, size, size);
+            callback(canvas.toDataURL('image/jpeg', 0.8));
         };
+        img.src = event.target.result;
     };
+    reader.readAsDataURL(file);
 };
 
 export const downloadJson = (data, filename) => {

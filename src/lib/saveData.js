@@ -14,6 +14,7 @@ export const STORAGE_KEYS = {
   data: 'jungleros_data_v2',
   images: 'jungleros_images_v2',
   history: 'jungleros_history_v1',
+  preferences: 'jungleros_preferences_v1',
   // Name-based saves from before hero ids. They're left in place after upgrading, as a fallback.
   legacyMatchups: 'moba_matchup_data_v1',
   legacyJunglers: 'moba_jungler_list_v1',

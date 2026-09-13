@@ -11,6 +11,10 @@ import {
   resolveEnemyLanes,
   nextSlot,
   isDraft,
+  moveBetweenSlots,
+  DEFAULT_DRAFT_PREFERENCES,
+  draftFromPreferences,
+  isDraftPreferences,
 } from '../src/lib/draft.js';
 
 const fill = (draft, group, ids) =>
@@ -152,6 +156,71 @@ test('nextSlot uses a single ban wave with three bans or fewer', () => {
   let draft = fill(createDraft({ bansPerTeam: 3, firstPick: 'enemy' }), 'enemyBans', ['e1', 'e2', 'e3']);
   draft = fill(draft, 'allyBans', ['a1', 'a2']);
   assert.deepEqual(nextSlot(draft), { group: 'allyBans', index: 2 });
+});
+
+test('moveBetweenSlots moves a hero into an empty slot', () => {
+  const draft = fill(createDraft(), 'ally', ['ling']);
+  const next = moveBetweenSlots(draft, { group: 'ally', index: 0 }, { group: 'ally', index: 3 });
+  assert.deepEqual(next.ally, [null, null, null, 'ling', null]);
+  assert.deepEqual(draft.ally, ['ling', null, null, null, null]);
+});
+
+test('moveBetweenSlots swaps two filled slots, even across teams and bans', () => {
+  let draft = fill(createDraft(), 'ally', ['ling']);
+  draft = fill(draft, 'enemyBans', ['fanny']);
+  const next = moveBetweenSlots(draft, { group: 'ally', index: 0 }, { group: 'enemyBans', index: 0 });
+  assert.equal(next.ally[0], 'fanny');
+  assert.equal(next.enemyBans[0], 'ling');
+});
+
+test('moveBetweenSlots keeps a lane you set with the enemy hero it belongs to', () => {
+  let draft = fill(createDraft(), 'enemy', ['chou', 'tigreal']);
+  draft = setEnemyLane(draft, 0, 'Exp Lane');
+  const next = moveBetweenSlots(draft, { group: 'enemy', index: 0 }, { group: 'enemy', index: 1 });
+  assert.deepEqual(next.enemy.slice(0, 2), ['tigreal', 'chou']);
+  assert.deepEqual(next.enemyLanes.slice(0, 2), [null, 'Exp Lane']);
+});
+
+test('moveBetweenSlots drops a set lane when the hero leaves the enemy picks', () => {
+  let draft = fill(createDraft(), 'enemy', ['chou']);
+  draft = setEnemyLane(draft, 0, 'Exp Lane');
+  const next = moveBetweenSlots(draft, { group: 'enemy', index: 0 }, { group: 'enemyBans', index: 0 });
+  assert.equal(next.enemyBans[0], 'chou');
+  assert.equal(next.enemy[0], null);
+  assert.equal(next.enemyLanes[0], null);
+});
+
+test('moveBetweenSlots returns the same draft for the same slot or an empty source', () => {
+  const draft = fill(createDraft(), 'ally', ['ling']);
+  assert.equal(moveBetweenSlots(draft, { group: 'ally', index: 0 }, { group: 'ally', index: 0 }), draft);
+  assert.equal(moveBetweenSlots(draft, { group: 'ally', index: 1 }, { group: 'ally', index: 2 }), draft);
+});
+
+test('draft preferences default to a 5-ban phase with your team picking first', () => {
+  assert.deepEqual(DEFAULT_DRAFT_PREFERENCES, { banPhase: true, bansPerTeam: 5, firstPick: 'ally' });
+});
+
+test('draftFromPreferences uses the saved ban count and first pick', () => {
+  const draft = draftFromPreferences({ banPhase: true, bansPerTeam: 3, firstPick: 'enemy' });
+  assert.equal(draft.bansPerTeam, 3);
+  assert.deepEqual(draft.allyBans, [null, null, null]);
+  assert.equal(draft.firstPick, 'enemy');
+});
+
+test('draftFromPreferences leaves out bans when the ban phase is off', () => {
+  const draft = draftFromPreferences({ banPhase: false, bansPerTeam: 4, firstPick: 'ally' });
+  assert.equal(draft.bansPerTeam, 0);
+  assert.deepEqual(draft.allyBans, []);
+  assert.deepEqual(nextSlot(draft), { group: 'ally', index: 0 });
+});
+
+test('isDraftPreferences accepts saved preferences and rejects broken ones', () => {
+  assert.equal(isDraftPreferences(DEFAULT_DRAFT_PREFERENCES), true);
+  assert.equal(isDraftPreferences({ banPhase: false, bansPerTeam: 4, firstPick: 'enemy' }), true);
+  assert.equal(isDraftPreferences({ banPhase: 'yes', bansPerTeam: 4, firstPick: 'enemy' }), false);
+  assert.equal(isDraftPreferences({ banPhase: true, bansPerTeam: 0, firstPick: 'ally' }), false);
+  assert.equal(isDraftPreferences({ banPhase: true, bansPerTeam: 5, firstPick: 'both' }), false);
+  assert.equal(isDraftPreferences(null), false);
 });
 
 test('isDraft accepts a saved draft and rejects broken ones', () => {

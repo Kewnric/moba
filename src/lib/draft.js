@@ -52,6 +52,31 @@ export const setFirstPick = (draft, team) => ({ ...draft, firstPick: team });
 // Sets the lane an enemy plays; null goes back to guessing it.
 export const setEnemyLane = (draft, index, lane) => ({ ...draft, enemyLanes: replaceAt(draft.enemyLanes, index, lane || null) });
 
+const isSameSlot = (a, b) => a.group === b.group && a.index === b.index;
+
+// Moves the hero in one slot to another, swapping with any hero already there, across teams and bans.
+// A lane you set stays with its enemy hero, and is dropped when that hero leaves the enemy picks.
+export function moveBetweenSlots(draft, from, to) {
+  const moving = draft[from.group][from.index];
+  if (isSameSlot(from, to) || !moving) return draft;
+  const displaced = draft[to.group][to.index] || null;
+  const laneAt = (slot) => (slot.group === 'enemy' ? draft.enemyLanes[slot.index] : null);
+
+  const next = { ...draft };
+  const writable = (group) => {
+    if (next[group] === draft[group]) next[group] = [...draft[group]];
+    return next[group];
+  };
+  writable(from.group)[from.index] = displaced;
+  writable(to.group)[to.index] = moving;
+
+  const lanes = [...draft.enemyLanes];
+  if (from.group === 'enemy') lanes[from.index] = displaced && to.group === 'enemy' ? laneAt(to) : null;
+  if (to.group === 'enemy') lanes[to.index] = from.group === 'enemy' ? laneAt(from) : null;
+  next.enemyLanes = lanes;
+  return next;
+}
+
 // Keeps the lanes you set and guesses the rest: heroes with fewer possible lanes choose first, each
 // taking the first of their lanes nobody has yet, or their main lane when all of them are taken.
 export function resolveEnemyLanes(draft, lanesOf) {
@@ -121,3 +146,18 @@ export const isDraft = (value) =>
   isSlotList(value.enemyLanes, TEAM_SIZE) &&
   isSlotList(value.allyBans, value.bansPerTeam) &&
   isSlotList(value.enemyBans, value.bansPerTeam);
+
+// Draft settings remembered between drafts: whether there's a ban phase, how many bans each team gets
+// when there is one, and which team picks first in a new draft.
+export const DEFAULT_DRAFT_PREFERENCES = { banPhase: true, bansPerTeam: 5, firstPick: 'ally' };
+
+export const isDraftPreferences = (value) =>
+  Boolean(value) &&
+  typeof value === 'object' &&
+  typeof value.banPhase === 'boolean' &&
+  BAN_OPTIONS.includes(value.bansPerTeam) &&
+  value.bansPerTeam > 0 &&
+  (value.firstPick === 'ally' || value.firstPick === 'enemy');
+
+export const draftFromPreferences = ({ banPhase, bansPerTeam, firstPick }) =>
+  createDraft({ bansPerTeam: banPhase ? bansPerTeam : 0, firstPick });

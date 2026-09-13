@@ -22,11 +22,12 @@ export default function HeroAvatar({ heroId, size = 'md', className = '', showTo
 
     const handleMouseEnter = (e) => {
         if (showTooltip && setTooltip) {
-            const rect = e.target.getBoundingClientRect();
+            const rect = e.currentTarget.getBoundingClientRect();
             setTooltip({
                 visible: true,
                 x: rect.left + rect.width / 2,
-                y: rect.top - 10,
+                top: rect.top,
+                bottom: rect.bottom,
                 content: { name, role: laneLabel(heroId), quickNote }
             });
         }
@@ -37,11 +38,12 @@ export default function HeroAvatar({ heroId, size = 'md', className = '', showTo
     return (
         <div className={`relative group flex flex-col items-center ${className}`} onMouseEnter={handleMouseEnter} onMouseLeave={handleMouseLeave}>
             <div className={`${SIZE_CLASSES[size]} rounded-xl shadow-lg flex items-center justify-center font-bold text-white overflow-hidden bg-slate-800 border border-white/10 relative transition-all duration-200 group-hover:scale-110 group-hover:shadow-cyan-500/20 group-hover:border-white/30`}>
-                {showImage ? (<img src={imageSrc} alt={name} className="w-full h-full object-cover" onError={() => setImgError(true)} />) : (<span className="z-10">{name.substring(0, 2)}</span>)}
+                {/* Not draggable itself, so a drag starts from the hero card around it instead of the image file. */}
+                {showImage ? (<img src={imageSrc} alt={name} draggable={false} className="w-full h-full object-cover" onError={() => setImgError(true)} />) : (<span className="z-10">{name.substring(0, 2)}</span>)}
                 {!showImage && <div className="absolute inset-0 bg-gradient-to-br from-slate-700 to-slate-800"></div>}
                 <div className="absolute inset-0 bg-gradient-to-tr from-transparent via-white/10 to-transparent opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none" />
             </div>
-            {onEditNote && (<button onClick={(e) => { e.stopPropagation(); onEditNote(); }} className="absolute -top-2 -right-2 z-20 bg-yellow-500 text-black p-1 rounded-full shadow-lg transition-opacity hover:bg-yellow-400 [@media(hover:hover)]:opacity-0 [@media(hover:hover)]:group-hover:opacity-100" title="Add Quick Tip"><Icons.Pencil size={10} /></button>)}
+            {onEditNote && (<button onClick={(e) => { e.stopPropagation(); onEditNote(); }} className="absolute -top-2 -right-2 z-20 bg-yellow-500 text-black p-1 rounded-full shadow-lg transition-opacity hover:bg-yellow-400 [@media(hover:hover)]:opacity-0 [@media(hover:hover)]:group-hover:opacity-100" title="Add Quick Tip" aria-label={`Quick tip for ${name}`}><Icons.Pencil size={10} /></button>)}
         </div>
     );
 }

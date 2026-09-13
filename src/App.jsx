@@ -1,7 +1,7 @@
-import { useEffect, useMemo, useReducer, useState } from 'react';
+import { useCallback, useEffect, useMemo, useReducer, useState } from 'react';
 import { HEROES, HERO_BY_ID } from './data/heroes.js';
 import { HERO_META } from './data/stats.js';
-import { resolveEnemyLanes } from './lib/draft.js';
+import { DEFAULT_DRAFT_PREFERENCES, isDraftPreferences, resolveEnemyLanes } from './lib/draft.js';
 import { dataReducer } from './lib/dataReducer.js';
 import { addGame, createGameRecord, mergeHistory, removeGame } from './lib/history.js';
 import {
@@ -26,15 +26,13 @@ import { AddJunglerModal, ImportDialog, QuickTipModal, TacticalNoteModal } from 
 import DraftLab from './views/DraftLab.jsx';
 import DatabaseEditor from './views/DatabaseEditor.jsx';
 import History from './views/History.jsx';
-import AssetManager from './views/AssetManager.jsx';
-import DataHub from './views/DataHub.jsx';
+import Settings from './views/Settings.jsx';
 
 const NAV_TABS = [
-    { id: 'draft', label: 'Draft Lab', shortLabel: 'Draft', icon: Icons.Target, activeClass: 'bg-cyan-600' },
-    { id: 'editor', label: 'Database', shortLabel: 'Ratings', icon: Icons.Edit3, activeClass: 'bg-purple-600' },
-    { id: 'history', label: 'History', shortLabel: 'History', icon: Icons.Chart, activeClass: 'bg-teal-600' },
-    { id: 'assets', label: 'Assets', shortLabel: 'Icons', icon: Icons.Image, activeClass: 'bg-orange-600' },
-    { id: 'data', label: 'Data Hub', shortLabel: 'Data', icon: Icons.Database, activeClass: 'bg-emerald-600' },
+    { id: 'draft', label: 'Draft', icon: Icons.Target, activeClass: 'bg-cyan-600' },
+    { id: 'editor', label: 'Ratings', icon: Icons.Edit3, activeClass: 'bg-purple-600' },
+    { id: 'history', label: 'History', icon: Icons.Chart, activeClass: 'bg-teal-600' },
+    { id: 'settings', label: 'Settings', icon: Icons.Sliders, activeClass: 'bg-emerald-600' },
 ];
 
 const WRITE_FAILED = "Your last change couldn't be saved because browser storage is full or blocked. Export a backup from Data Hub before closing this tab.";
@@ -63,7 +61,10 @@ export default function App() {
     const [customImages, setCustomImages] = useState(startup.images);
     const [history, setHistory] = useState(startup.history);
     const [notice, setNotice] = useState(() => startupNotice(startup));
-    const draftState = useDraft();
+    const [draftPreferences, setDraftPreferences] = useState(() =>
+        createSafeStorage(() => window.localStorage).read(STORAGE_KEYS.preferences, DEFAULT_DRAFT_PREFERENCES, isDraftPreferences));
+    const updateDraftPreferences = useCallback((changes) => setDraftPreferences(current => ({ ...current, ...changes })), []);
+    const draftState = useDraft(draftPreferences, updateDraftPreferences);
 
     const [view, setView] = useState('draft');
     const [onlyPool, setOnlyPool] = useState(false);
@@ -74,7 +75,8 @@ export default function App() {
     const [pendingImport, setPendingImport] = useState(null);
     const [lastRecord, setLastRecord] = useState(null);
     const [draggingSource, setDraggingSource] = useState(null);
-    const [tooltipState, setTooltipState] = useState({ visible: false, x: 0, y: 0, content: null });
+    const [tooltipState, setTooltipState] = useState({ visible: false, x: 0, top: 0, bottom: 0, content: null });
+    const hideTooltip = useCallback(() => setTooltipState(current => (current.visible ? { ...current, visible: false } : current)), []);
 
     const storage = useMemo(() => createSafeStorage(() => window.localStorage, ({ action, key, error }) => {
         console.warn(`JunglerOS could not ${action} "${key}"`, error);
@@ -85,6 +87,7 @@ export default function App() {
     useEffect(() => { if (data !== startup.data) storage.write(STORAGE_KEYS.data, data); }, [data, startup, storage]);
     useEffect(() => { if (customImages !== startup.images) storage.write(STORAGE_KEYS.images, customImages); }, [customImages, startup, storage]);
     useEffect(() => { if (history !== startup.history) storage.write(STORAGE_KEYS.history, history); }, [history, startup, storage]);
+    useEffect(() => { storage.write(STORAGE_KEYS.preferences, draftPreferences); }, [draftPreferences, storage]);
 
     const handleAddJungler = () => {
         if (!newJunglerId) return;
@@ -101,10 +104,17 @@ export default function App() {
         }
     };
 
-    const handleAssetUpload = (e, heroId) => {
+    const handleIconUpload = (e, heroId) => {
         const file = e.target.files[0];
+        // Clear the input so choosing the same file again still triggers an upload.
+        e.target.value = '';
         if (file) compressImage(file, (base64) => setCustomImages(images => ({ ...images, [heroId]: base64 })));
     };
+
+    const resetIcon = (heroId) => setCustomImages(images => {
+        const { [heroId]: _removed, ...rest } = images;
+        return rest;
+    });
 
     const handleExport = () => {
         downloadJson(buildExport(data, customImages, history), `jungleros_full_backup_${new Date().toISOString().slice(0, 10)}.json`);
@@ -216,7 +226,7 @@ export default function App() {
 
     return (
         <div className="h-dvh w-full flex flex-col bg-[#0f172a] text-gray-100">
-            <GlobalTooltip {...tooltipState} />
+            <GlobalTooltip {...tooltipState} onHide={hideTooltip} />
 
             <nav className="h-14 lg:h-16 bg-slate-900/80 backdrop-blur border-b border-white/10 flex items-center justify-between gap-2 px-2 sm:px-3 lg:px-8 z-30 shrink-0">
                 <div className="flex items-center gap-2 lg:gap-4 min-w-0">
@@ -224,10 +234,10 @@ export default function App() {
                     <div className="hidden md:block"><h1 className="text-lg lg:text-xl font-bold text-white tracking-wider">JUNGLER<span className="text-cyan-400">OS</span></h1><div className="hidden lg:block text-[10px] text-gray-500 tracking-[0.2em] uppercase">Tactical Counter Engine</div></div>
                 </div>
                 <div className="flex bg-slate-800 p-1 rounded-lg overflow-x-auto scrollbar-hide">
-                    {NAV_TABS.map(({ id, label, shortLabel, icon: TabIcon, activeClass }) => (
+                    {NAV_TABS.map(({ id, label, icon: TabIcon, activeClass }) => (
                         <button key={id} type="button" aria-current={view === id ? 'page' : undefined} onClick={() => setView(id)}
                             className={`shrink-0 px-1.5 sm:px-3 lg:px-5 py-1 sm:py-2 rounded-md text-[9px] sm:text-[11px] lg:text-xs font-bold uppercase sm:tracking-wide transition-all flex flex-col sm:flex-row items-center gap-0.5 sm:gap-1.5 lg:gap-2 ${view === id ? `${activeClass} text-white shadow-lg` : 'text-gray-400 hover:text-white'}`}>
-                            <TabIcon size={14} /><span className="lg:hidden">{shortLabel}</span><span className="hidden lg:inline">{label}</span>
+                            <TabIcon size={14} /><span>{label}</span>
                         </button>
                     ))}
                 </div>
@@ -245,6 +255,7 @@ export default function App() {
                     <DraftLab
                         draftState={draftState}
                         enemyLanes={enemyLanes}
+                        defaultBanCount={draftPreferences.bansPerTeam}
                         scoring={scoring}
                         onlyPool={onlyPool}
                         setOnlyPool={setOnlyPool}
@@ -284,8 +295,19 @@ export default function App() {
                         onOpenDraft={() => setView('draft')}
                     />
                 )}
-                {view === 'assets' && <AssetManager customImages={customImages} onUpload={handleAssetUpload} />}
-                {view === 'data' && <DataHub stats={stats} onExport={handleExport} onImport={handleImport} onReset={handleReset} />}
+                {view === 'settings' && (
+                    <Settings
+                        preferences={draftPreferences}
+                        onPreferencesChange={updateDraftPreferences}
+                        stats={stats}
+                        onExport={handleExport}
+                        onImport={handleImport}
+                        onReset={handleReset}
+                        customImages={customImages}
+                        onUploadIcon={handleIconUpload}
+                        onResetIcon={resetIcon}
+                    />
+                )}
             </main>
 
             {editingNote && editingNote.field === 'comment' && (

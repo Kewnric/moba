@@ -1,8 +1,9 @@
 import { useEffect, useMemo, useState } from 'react';
 import {
     clearSlot,
-    createDraft,
+    draftFromPreferences,
     isDraft,
+    moveBetweenSlots,
     nextSlot,
     setBansPerTeam,
     setEnemyLane,
@@ -18,9 +19,11 @@ const sameSlot = (a, b) => Boolean(a && b && a.group === b.group && a.index === 
 
 // The draft in progress. It survives a refresh (per browser tab), keeps an undo history, and tracks
 // the slot the next tapped hero goes into: the one you selected, or the next slot in draft order.
-export function useDraft() {
+// New drafts follow your draft preferences, and turning the ban phase on or off (or changing the number
+// of bans) on the board updates those preferences too.
+export function useDraft(preferences, updatePreferences) {
     const storage = useMemo(() => createSafeStorage(() => window.sessionStorage), []);
-    const [draft, setDraft] = useState(() => storage.read(DRAFT_KEY, null, isDraft) || createDraft());
+    const [draft, setDraft] = useState(() => storage.read(DRAFT_KEY, null, isDraft) || draftFromPreferences(preferences));
     const [history, setHistory] = useState([]);
     const [selectedSlot, setSelectedSlot] = useState(null);
 
@@ -43,13 +46,25 @@ export function useDraft() {
         pickHero: (heroId) => {
             if (activeSlot && commit(setSlot(draft, activeSlot, heroId))) setSelectedSlot(null);
         },
+        placeHero: (slot, heroId) => {
+            if (commit(setSlot(draft, slot, heroId))) setSelectedSlot(null);
+        },
+        moveHero: (from, to) => {
+            if (commit(moveBetweenSlots(draft, from, to))) setSelectedSlot(null);
+        },
         clearSlot: (slot) => {
             commit(clearSlot(draft, slot));
             setSelectedSlot(slot);
         },
         setEnemyLane: (index, lane) => commit(setEnemyLane(draft, index, lane)),
+        setBanPhase: (enabled) => {
+            commit(setBansPerTeam(draft, enabled ? preferences.bansPerTeam : 0));
+            updatePreferences({ banPhase: enabled });
+            setSelectedSlot(null);
+        },
         setBansPerTeam: (count) => {
             commit(setBansPerTeam(draft, count));
+            updatePreferences({ banPhase: true, bansPerTeam: count });
             setSelectedSlot(null);
         },
         setFirstPick: (team) => commit(setFirstPick(draft, team)),
@@ -60,7 +75,7 @@ export function useDraft() {
             setSelectedSlot(null);
         },
         newDraft: () => {
-            commit(createDraft({ bansPerTeam: draft.bansPerTeam, firstPick: draft.firstPick }));
+            commit(draftFromPreferences(preferences));
             setSelectedSlot(null);
         },
     };

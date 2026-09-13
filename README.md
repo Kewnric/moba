@@ -10,12 +10,19 @@ A Mobile Legends: Bang Bang draft helper for junglers. Enter both teams' picks a
 ## Using the draft board
 
 - Tap a slot, then tap a hero. You can also type a name and press Enter to add the top match.
+- With a mouse you can also drag a hero onto any slot, drag between slots to move or swap heroes, and drag a slot back onto the hero list to remove it.
 - The highlighted slot moves on in ranked draft order: bans alternate starting with the team that picks first, picks go 1-2-2-2-2-1, and with more than three bans per team the extra bans come after the first six picks. You don't have to enter bans; they're skipped once picks move past them.
-- **Settings** sets who picks first and how many bans each team gets.
+- The **Bans** switch turns the ban phase on or off, and JunglerOS remembers your choice. **Settings** on the board sets who picks first and how many bans each team gets; the Settings tab sets the defaults for new drafts.
 - Each enemy's lane is guessed automatically. Change it with the menu under their slot.
 - **Undo** reverses the last change and **New** starts a fresh draft. A refresh keeps the draft in the same tab.
 - **Only my pool** limits the ranking to junglers you gave a comfort rating in Ratings.
 - **After the game**, pick the hero you played and tap **Won** or **Lost** to save the draft to History.
+
+## Rating matchups
+
+- In **Ratings**, choose a jungler, then pick a tier and tap heroes to rate them, or drag heroes onto a tier row. The whole row, label included, accepts the drop.
+- Drag a rated hero back onto the unrated list, or use **Unrate**, to remove its rating.
+- Set a 1–5 **Comfort** rating for junglers you play; they make up your pool.
 
 ## How picks are ranked
 
@@ -64,7 +71,7 @@ Needs Node 22 or newer.
 | Path | What it holds |
 | --- | --- |
 | `src/App.jsx` | App shell: saved data, scoring, navigation and dialogs |
-| `src/views/` | The Draft Lab, Database, History, Assets and Data Hub screens |
+| `src/views/` | The Draft, Ratings, History and Settings screens |
 | `src/components/` | Draft board, recommendation, result recorder, hero pool, avatars, dialogs and the crash screen |
 | `src/lib/history.js` | Recorded games, records by jungler and ratings to review |
 | `src/lib/scoring.js` | The score out of 100 and the reasons behind it |
@@ -80,7 +87,7 @@ Needs Node 22 or newer.
 
 ## Your saved data
 
-Your roster, ratings, notes, comfort ratings, custom icons and game history are saved in the browser you use JunglerOS in. Data Hub exports them to a backup file and restores backups from any version of the app. Before a restore changes anything, it shows what the file contains and lets you **Merge** it into your data (the backup wins where both rate the same matchup) or **Replace** your data.
+Your roster, ratings, notes, comfort ratings, custom icons and game history are saved in the browser you use JunglerOS in. The Settings tab exports them to a backup file and restores backups from any version of the app. Before a restore changes anything, it shows what the file contains and lets you **Merge** it into your data (the backup wins where both rate the same matchup) or **Replace** your data.
 
 Saves are keyed by hero id, not display name. The first time this version opens, it upgrades an older name-based save automatically, leaves the old copy in place, and lists any names that didn't match a hero. When a new default jungler is added to JunglerOS, it's added to your roster once; junglers you removed stay removed.
 
