@@ -24,7 +24,7 @@ const isHeroDrag = (e) => Array.from(e.dataTransfer.types).includes(HERO_TYPE);
 // Phones: the board stays pinned at the top while the recommendation and hero picker scroll under it.
 // Desktop: the hero picker is a left column beside the board and recommendation. Heroes can be tapped
 // into the highlighted slot or dragged onto any slot; dragging a slot onto the picker removes it.
-export default function DraftLab({ draftState, enemyLanes, defaultBanCount, scoring, onlyPool, setOnlyPool, hasPool, customImages, setTooltip, onOpenDatabase, resultRecorder }) {
+export default function DraftLab({ draftState, enemyLanes, defaultBanCount, allyJunglers, scoring, onlyPool, setOnlyPool, hasPool, customImages, setTooltip, onOpenDatabase, resultRecorder }) {
     const { draft, activeSlot } = draftState;
     const [laneFilter, setLaneFilter] = useState('All');
     const [search, setSearch] = useState('');
@@ -119,7 +119,7 @@ export default function DraftLab({ draftState, enemyLanes, defaultBanCount, scor
             </div>
 
             <div className="p-3 lg:px-8 lg:pt-2 lg:pb-8 lg:col-start-2 lg:row-start-2 lg:min-h-0 lg:overflow-y-auto scrollbar-hide">
-                <Recommendation scoring={scoring} onlyPool={onlyPool} setOnlyPool={setOnlyPool} hasPool={hasPool} customImages={customImages} onOpenDatabase={onOpenDatabase} />
+                <Recommendation scoring={scoring} allyJunglers={allyJunglers} onlyPool={onlyPool} setOnlyPool={setOnlyPool} hasPool={hasPool} customImages={customImages} onOpenDatabase={onOpenDatabase} />
                 <ResultRecorder draft={draft} {...resultRecorder} />
             </div>
 

@@ -53,7 +53,15 @@ function matchupPart(junglerId, enemies, ratings, matchupStats) {
   const details = enemies.map(({ heroId: enemyId, lane }) => {
     const weight = lane === LANES.JUNGLE ? ENEMY_JUNGLER_WEIGHT : 1;
     const entry = junglerRatings[enemyId];
-    const detail = { enemyId, lane: lane || null, weight, source: null, value: null, quickNote: (entry && entry.quickNote) || null };
+    const detail = {
+      enemyId,
+      lane: lane || null,
+      weight,
+      source: null,
+      value: null,
+      quickNote: (entry && entry.quickNote) || null,
+      comment: (entry && entry.comment) || null,
+    };
 
     if (entry && hasOwn(TIER_VALUES, entry.tier)) {
       Object.assign(detail, { source: 'you', tier: entry.tier, value: TIER_VALUES[entry.tier] });

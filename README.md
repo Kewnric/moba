@@ -16,6 +16,7 @@ A Mobile Legends: Bang Bang draft helper for junglers. Enter both teams' picks a
 - Each enemy's lane is guessed automatically. Change it with the menu under their slot.
 - **Undo** reverses the last change and **New** starts a fresh draft. A refresh keeps the draft in the same tab.
 - **Only my pool** limits the ranking to junglers you gave a comfort rating in Ratings.
+- The recommendation lists your long notes for the enemies in the draft, and warns you when a teammate who only plays jungle has already picked.
 - **After the game**, pick the hero you played and tap **Won** or **Lost** to save the draft to History.
 
 ## Rating matchups

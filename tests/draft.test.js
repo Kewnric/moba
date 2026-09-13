@@ -15,6 +15,7 @@ import {
   DEFAULT_DRAFT_PREFERENCES,
   draftFromPreferences,
   isDraftPreferences,
+  findAllyJunglers,
 } from '../src/lib/draft.js';
 
 const fill = (draft, group, ids) =>
@@ -221,6 +222,16 @@ test('isDraftPreferences accepts saved preferences and rejects broken ones', () 
   assert.equal(isDraftPreferences({ banPhase: true, bansPerTeam: 0, firstPick: 'ally' }), false);
   assert.equal(isDraftPreferences({ banPhase: true, bansPerTeam: 5, firstPick: 'both' }), false);
   assert.equal(isDraftPreferences(null), false);
+});
+
+test('findAllyJunglers lists teammates who only play jungle', () => {
+  const draft = fill(createDraft(), 'ally', ['tigreal', 'ling', 'balmond']);
+  assert.deepEqual(findAllyJunglers(draft, lanesOf), ['ling']);
+});
+
+test('findAllyJunglers is empty when no teammate is a dedicated jungler', () => {
+  assert.deepEqual(findAllyJunglers(fill(createDraft(), 'ally', ['chou', 'saber']), lanesOf), []);
+  assert.deepEqual(findAllyJunglers(createDraft(), lanesOf), []);
 });
 
 test('isDraft accepts a saved draft and rejects broken ones', () => {

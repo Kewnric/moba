@@ -1,5 +1,6 @@
 // JunglerOS draft board: both teams' picks and bans, enemy lanes, and the order slots get filled.
 // Plain functions that return new drafts, shared by the Draft Lab and the tests.
+import { LANES } from '../data/heroes.js';
 
 export const TEAM_SIZE = 5;
 export const BAN_OPTIONS = [0, 3, 4, 5];
@@ -93,6 +94,14 @@ export function resolveEnemyLanes(draft, lanesOf) {
     });
   return lanes;
 }
+
+// Teammates whose only lane is jungle. When one of them is picked, you probably aren't the one jungling.
+export const findAllyJunglers = (draft, lanesOf) =>
+  draft.ally.filter((heroId) => {
+    if (!heroId) return false;
+    const lanes = lanesOf(heroId);
+    return lanes.length === 1 && lanes[0] === LANES.JUNGLE;
+  });
 
 // Ranked draft order: bans alternate from the first-pick team, picks go 1-2-2-2-2-1, and bans beyond
 // the first three per team happen after the first six picks.

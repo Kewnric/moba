@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useReducer, useState } from 'react';
 import { HEROES, HERO_BY_ID } from './data/heroes.js';
 import { HERO_META } from './data/stats.js';
-import { DEFAULT_DRAFT_PREFERENCES, isDraftPreferences, resolveEnemyLanes } from './lib/draft.js';
+import { DEFAULT_DRAFT_PREFERENCES, findAllyJunglers, isDraftPreferences, resolveEnemyLanes } from './lib/draft.js';
 import { dataReducer } from './lib/dataReducer.js';
 import { addGame, createGameRecord, mergeHistory, removeGame } from './lib/history.js';
 import {
@@ -22,7 +22,7 @@ import { useDraft } from './hooks/useDraft.js';
 import { Icons } from './components/Icons.jsx';
 import GlobalTooltip from './components/GlobalTooltip.jsx';
 import { heroName } from './components/HeroAvatar.jsx';
-import { AddJunglerModal, ImportDialog, QuickTipModal, TacticalNoteModal } from './components/Modals.jsx';
+import { AddJunglerModal, ConfirmDialog, ImportDialog, QuickTipModal, TacticalNoteModal } from './components/Modals.jsx';
 import DraftLab from './views/DraftLab.jsx';
 import DatabaseEditor from './views/DatabaseEditor.jsx';
 import History from './views/History.jsx';
@@ -73,6 +73,7 @@ export default function App() {
     const [isAddingJungler, setIsAddingJungler] = useState(false);
     const [newJunglerId, setNewJunglerId] = useState('');
     const [pendingImport, setPendingImport] = useState(null);
+    const [confirmRequest, setConfirmRequest] = useState(null); // { title, message, confirmLabel, onConfirm }
     const [lastRecord, setLastRecord] = useState(null);
     const [draggingSource, setDraggingSource] = useState(null);
     const [tooltipState, setTooltipState] = useState({ visible: false, x: 0, top: 0, bottom: 0, content: null });
@@ -98,10 +99,16 @@ export default function App() {
 
     const handleDeleteJungler = () => {
         if (!editorJungler) return;
-        if (confirm(`Delete ${heroName(editorJungler)} from roster?`)) {
-            dispatch({ type: 'removeJungler', junglerId: editorJungler });
-            setEditorJungler(null);
-        }
+        const junglerId = editorJungler;
+        setConfirmRequest({
+            title: `Remove ${heroName(junglerId)}?`,
+            message: `${heroName(junglerId)} leaves your roster, along with all of their matchup ratings, notes and comfort rating.`,
+            confirmLabel: 'Remove',
+            onConfirm: () => {
+                dispatch({ type: 'removeJungler', junglerId });
+                setEditorJungler(null);
+            },
+        });
     };
 
     const handleIconUpload = (e, heroId) => {
@@ -150,10 +157,24 @@ export default function App() {
     };
 
     const handleReset = () => {
-        if (confirm("Are you sure? This will wipe all data, including your game history.")) {
-            clearSave(storage);
-            window.location.reload();
-        }
+        setConfirmRequest({
+            title: 'Reset JunglerOS?',
+            message: "This deletes your ratings, notes, roster, comfort, custom icons, game history and settings from this browser. It can't be undone.",
+            confirmLabel: 'Reset everything',
+            onConfirm: () => {
+                clearSave(storage);
+                window.location.reload();
+            },
+        });
+    };
+
+    const requestDeleteGame = (game) => {
+        setConfirmRequest({
+            title: 'Delete this game?',
+            message: `The ${game.result === 'win' ? 'win' : 'loss'} with ${heroName(game.playedId)} will be removed from your history and records.`,
+            confirmLabel: 'Delete',
+            onConfirm: () => setHistory(current => removeGame(current, game.id)),
+        });
     };
 
     const saveNote = () => {
@@ -174,6 +195,7 @@ export default function App() {
     const comfort = useMemo(() => data.comfort || {}, [data.comfort]);
     const hasPool = Object.keys(comfort).length > 0;
     const enemyLanes = useMemo(() => resolveEnemyLanes(draft, lanesOf), [draft]);
+    const allyJunglers = useMemo(() => findAllyJunglers(draft, lanesOf), [draft]);
 
     const scoringInputs = useMemo(() => ({
         junglerIds: data.junglers,
@@ -256,6 +278,7 @@ export default function App() {
                         draftState={draftState}
                         enemyLanes={enemyLanes}
                         defaultBanCount={draftPreferences.bansPerTeam}
+                        allyJunglers={allyJunglers}
                         scoring={scoring}
                         onlyPool={onlyPool}
                         setOnlyPool={setOnlyPool}
@@ -290,7 +313,7 @@ export default function App() {
                         history={history}
                         ratings={data.matchups}
                         customImages={customImages}
-                        onDeleteGame={(id) => setHistory(current => removeGame(current, id))}
+                        onDeleteGame={requestDeleteGame}
                         onSetTier={(junglerId, enemyId, tier) => dispatch({ type: 'setTier', junglerId, enemyId, tier })}
                         onOpenDraft={() => setView('draft')}
                     />
@@ -333,6 +356,18 @@ export default function App() {
                     onMerge={() => applyImport('merge')}
                     onReplace={() => applyImport('replace')}
                     onCancel={() => setPendingImport(null)}
+                />
+            )}
+            {confirmRequest && (
+                <ConfirmDialog
+                    title={confirmRequest.title}
+                    message={confirmRequest.message}
+                    confirmLabel={confirmRequest.confirmLabel}
+                    onConfirm={() => {
+                        setConfirmRequest(null);
+                        confirmRequest.onConfirm();
+                    }}
+                    onCancel={() => setConfirmRequest(null)}
                 />
             )}
         </div>

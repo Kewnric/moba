@@ -62,6 +62,13 @@ test('your tier rating counts fully against an enemy', () => {
   assert.equal(ling.details.matchups[0].source, 'you');
 });
 
+test('matchup details include your quick tip and long note', () => {
+  const ratings = { ling: { tigreal: { tier: 'A', quickNote: 'Kite his ult', comment: 'Wait for his ult before diving' } } };
+  const [matchup] = byId(scoreJunglers(context({ enemies: [enemy('tigreal')], ratings }))).ling.details.matchups;
+  assert.equal(matchup.quickNote, 'Kite his ult');
+  assert.equal(matchup.comment, 'Wait for his ult before diving');
+});
+
 test('win-rate stats fill in matchups you have not rated, at half weight', () => {
   const ling = byId(scoreJunglers(context({ enemies: [enemy('tigreal')], matchupStats: { ling: { tigreal: 5 } } }))).ling;
   near(ling.parts.matchup, 45 * (1 / 1.5));

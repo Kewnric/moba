@@ -123,7 +123,7 @@ export default function History({ history, ratings, customImages, onDeleteGame, 
                                         {enemyIds.map(id => <div key={id} className="w-6 h-6 rounded-md ring-1 ring-slate-900 overflow-hidden"><HeroAvatar heroId={id} size="fill" className="w-full h-full" showTooltip={false} customImages={customImages} /></div>)}
                                     </div>
                                     <button type="button" aria-label={`Delete the ${won ? 'win' : 'loss'} with ${heroName(game.playedId)} from ${formatDate(game.playedAt)}`}
-                                        onClick={() => { if (confirm('Delete this game from your history?')) onDeleteGame(game.id); }}
+                                        onClick={() => onDeleteGame(game)}
                                         className="shrink-0 w-7 h-7 rounded-md text-gray-500 hover:text-white hover:bg-red-600/60 flex items-center justify-center">
                                         <Icons.Trash2 size={13} />
                                     </button>

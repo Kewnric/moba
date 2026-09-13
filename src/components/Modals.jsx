@@ -3,18 +3,34 @@ import { Icons } from './Icons.jsx';
 
 const CANCEL_BUTTON = 'px-3 py-2 rounded text-xs text-gray-400 hover:text-white';
 const NON_TEXT_INPUTS = ['button', 'submit', 'reset', 'checkbox', 'radio', 'file', 'range', 'color'];
+const FOCUSABLE = 'button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [href], [tabindex]:not([tabindex="-1"])';
 
-// Shared pop-up. Esc or a click outside closes it, Enter submits it, focus moves to the element
-// marked data-autofocus (or the first field) and returns to where it was when the pop-up closes.
+// Shared pop-up. Esc or a click outside closes it, Enter submits it, Tab keeps focus inside it, and focus
+// moves to the element marked data-autofocus (or the first field) and back to where it was on close.
 export function Dialog({ title, icon: TitleIcon, titleClass, borderClass, onClose, onSubmit, children, footer }) {
     const titleId = useId();
     const panelRef = useRef(null);
     const onCloseRef = useRef(onClose);
     onCloseRef.current = onClose;
 
-    // Enter is handled on keydown because some keyboards never trigger the browser's own form submit.
-    // Fields with their own Enter handling call preventDefault first, and textareas keep Enter for new lines.
     const handleKeyDown = (e) => {
+        if (e.key === 'Tab') {
+            const focusable = Array.from(panelRef.current.querySelectorAll(FOCUSABLE));
+            if (!focusable.length) return;
+            const first = focusable[0];
+            const last = focusable[focusable.length - 1];
+            const outside = !focusable.includes(document.activeElement);
+            if (e.shiftKey && (outside || document.activeElement === first)) {
+                e.preventDefault();
+                last.focus();
+            } else if (!e.shiftKey && (outside || document.activeElement === last)) {
+                e.preventDefault();
+                first.focus();
+            }
+            return;
+        }
+        // Enter is handled on keydown because some keyboards never trigger the browser's own form submit.
+        // Fields with their own Enter handling call preventDefault first, and textareas keep Enter for new lines.
         if (e.key !== 'Enter' || e.defaultPrevented || e.nativeEvent.isComposing) return;
         const { tagName, type } = e.target;
         const isTextField = tagName === 'INPUT' && !NON_TEXT_INPUTS.includes(type);
@@ -29,15 +45,15 @@ export function Dialog({ title, icon: TitleIcon, titleClass, borderClass, onClos
         const panel = panelRef.current;
         const target = panel.querySelector('[data-autofocus]') || panel.querySelector('input, textarea, select') || panel;
         target.focus();
-        const handleKeyDown = (e) => {
+        const handleEscape = (e) => {
             if (e.key === 'Escape') {
                 e.preventDefault();
                 onCloseRef.current();
             }
         };
-        document.addEventListener('keydown', handleKeyDown);
+        document.addEventListener('keydown', handleEscape);
         return () => {
-            document.removeEventListener('keydown', handleKeyDown);
+            document.removeEventListener('keydown', handleEscape);
             if (previouslyFocused && typeof previouslyFocused.focus === 'function') previouslyFocused.focus();
         };
     }, []);
@@ -57,6 +73,19 @@ export function Dialog({ title, icon: TitleIcon, titleClass, borderClass, onClos
     );
 }
 
+// Asks before a destructive action. Focus starts on Cancel, so pressing Enter by habit changes nothing.
+export function ConfirmDialog({ title, message, confirmLabel = 'Confirm', onConfirm, onCancel }) {
+    return (
+        <Dialog title={title} icon={Icons.Trash2} titleClass="text-red-400" borderClass="border-red-500/30" onClose={onCancel} onSubmit={onConfirm}
+            footer={<>
+                <button type="button" data-autofocus onClick={onCancel} className={CANCEL_BUTTON}>Cancel</button>
+                <button type="submit" className="px-3 py-2 rounded bg-red-600 hover:bg-red-500 text-white text-xs font-bold shadow-lg">{confirmLabel}</button>
+            </>}>
+            <p className="text-sm text-gray-300">{message}</p>
+        </Dialog>
+    );
+}
+
 // Long matchup note, opened from the speech-bubble button (or a double-click) on a rated hero.
 export function TacticalNoteModal({ heroName, text, onChange, onCancel, onSave }) {
     return (
@@ -69,7 +98,7 @@ export function TacticalNoteModal({ heroName, text, onChange, onCancel, onSave }
             <textarea data-autofocus aria-label={`Long note for ${heroName}`} className="w-full h-32 bg-slate-800 border border-white/10 rounded p-3 text-sm text-white focus:outline-none focus:border-cyan-500 resize-none"
                 placeholder="Enter deep tactical analysis..." value={text} onChange={(e) => onChange(e.target.value)}
                 onKeyDown={(e) => { if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) { e.preventDefault(); onSave(); } }} />
-            <p className="text-[10px] text-gray-500 mt-1">Ctrl+Enter to save · Esc to cancel</p>
+            <p className="text-[10px] text-gray-500 mt-1">Ctrl+Enter to save · Esc to cancel · Shows under the recommendation in Draft</p>
         </Dialog>
     );
 }

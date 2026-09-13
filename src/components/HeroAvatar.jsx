@@ -20,8 +20,10 @@ export default function HeroAvatar({ heroId, size = 'md', className = '', showTo
 
     useEffect(() => { setImgError(false); }, [heroId, imageSrc]);
 
-    const handleMouseEnter = (e) => {
-        if (showTooltip && setTooltip) {
+    // Only a real mouse hover opens the tooltip. A tap on a touch screen also sends hover events, and the
+    // tooltip would stay stuck open after it.
+    const handlePointerEnter = (e) => {
+        if (e.pointerType === 'mouse' && showTooltip && setTooltip) {
             const rect = e.currentTarget.getBoundingClientRect();
             setTooltip({
                 visible: true,
@@ -33,10 +35,10 @@ export default function HeroAvatar({ heroId, size = 'md', className = '', showTo
         }
     };
 
-    const handleMouseLeave = () => { if (setTooltip) setTooltip(prev => ({ ...prev, visible: false })); };
+    const handlePointerLeave = () => { if (setTooltip) setTooltip(prev => (prev.visible ? { ...prev, visible: false } : prev)); };
 
     return (
-        <div className={`relative group flex flex-col items-center ${className}`} onMouseEnter={handleMouseEnter} onMouseLeave={handleMouseLeave}>
+        <div className={`relative group flex flex-col items-center ${className}`} onPointerEnter={handlePointerEnter} onPointerLeave={handlePointerLeave}>
             <div className={`${SIZE_CLASSES[size]} rounded-xl shadow-lg flex items-center justify-center font-bold text-white overflow-hidden bg-slate-800 border border-white/10 relative transition-all duration-200 group-hover:scale-110 group-hover:shadow-cyan-500/20 group-hover:border-white/30`}>
                 {/* Not draggable itself, so a drag starts from the hero card around it instead of the image file. */}
                 {showImage ? (<img src={imageSrc} alt={name} draggable={false} className="w-full h-full object-cover" onError={() => setImgError(true)} />) : (<span className="z-10">{name.substring(0, 2)}</span>)}

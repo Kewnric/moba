@@ -135,6 +135,16 @@ function PickDetails({ entry, customImages }) {
                         </div>
                     </div>
                 )}
+                {entry.details.matchups.some(matchup => matchup.comment) && (
+                    <div>
+                        <h3 className={SUBHEAD}>Your notes</h3>
+                        <ul className="text-xs text-gray-300 space-y-1">
+                            {entry.details.matchups.filter(matchup => matchup.comment).map(matchup => (
+                                <li key={matchup.enemyId} className="flex gap-1.5"><Icons.MessageSquare size={12} className="text-cyan-400 shrink-0 mt-0.5" /><span><span className="font-semibold text-white">vs {heroName(matchup.enemyId)}:</span> {matchup.comment}</span></li>
+                            ))}
+                        </ul>
+                    </div>
+                )}
                 <div>
                     <h3 className={SUBHEAD}>Team fit</h3>
                     <ul className="text-xs text-gray-300 space-y-0.5">{entry.details.teamFit.reasons.map(reason => <li key={reason}>{reason}</li>)}</ul>
@@ -164,7 +174,7 @@ function PickDetails({ entry, customImages }) {
     );
 }
 
-export default function Recommendation({ scoring, onlyPool, setOnlyPool, hasPool, customImages, onOpenDatabase }) {
+export default function Recommendation({ scoring, allyJunglers = [], onlyPool, setOnlyPool, hasPool, customImages, onOpenDatabase }) {
     const { mode, ranked, recommended } = scoring;
     const [viewedId, setViewedId] = useState(null);
 
@@ -190,6 +200,13 @@ export default function Recommendation({ scoring, onlyPool, setOnlyPool, hasPool
                 <div className="flex items-center gap-2 text-cyan-400"><Icons.Crown size={16} /><span className="text-[10px] lg:text-xs font-bold uppercase tracking-widest">{title}</span></div>
                 <PoolSwitch onlyPool={onlyPool} setOnlyPool={setOnlyPool} hasPool={hasPool} />
             </div>
+
+            {allyJunglers.length > 0 && (
+                <p role="status" className="mb-3 flex items-start gap-2 rounded-lg border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-xs text-amber-200">
+                    <Icons.Info size={14} className="shrink-0 mt-0.5" />
+                    <span>Your team already has {allyJunglers.map(heroName).join(' and ')}, who usually {allyJunglers.length === 1 ? 'jungles' : 'jungle'}. If you're jungling, ask for a lane swap, since two junglers split the jungle's gold and experience.</span>
+                </p>
+            )}
 
             {ranked.length === 0 ? (
                 <div className="py-6 text-center text-sm text-gray-400 space-y-3">
