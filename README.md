@@ -37,6 +37,11 @@ Each available jungler gets a score out of 100:
 | Meta | 15 | Mythic win rate over the last 15 days. 55% or higher gets full points; 45% or lower gets none. |
 | Counter-pick risk | −10 | 2 points for each still-open hero that drops this jungler's win rate by 3 points or more, shrinking as the enemy fills its picks. |
 
+- **Use** on the recommendation (also in Settings) switches what the score is based on:
+  - **My ratings**: only your tier ratings. Win-rate stats, duo synergy and meta are off (meta counts as the middle for everyone), and counter-pick risk comes from open heroes you rated D.
+  - **Both** (default): the table above. Where you rated a matchup, your rating also replaces the stats for counter-pick risk.
+  - **Mythic stats**: only the stats, at full weight. Your tier ratings are off.
+  - Comfort counts in every mode, because it's about what you can play rather than who counters whom.
 - Heroes picked by either team or banned are never suggested.
 - A jungler is recommended once half the enemy picks have a rating or stats behind them.
 - Before the enemy picks anything, Draft Lab ranks safe early picks instead.

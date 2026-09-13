@@ -7,7 +7,7 @@ export const SCORE_PARTS = { matchup: 45, teamFit: 20, comfort: 20, meta: 15 };
 export const MAX_RISK = 10;
 
 const TIER_VALUES = { S: 1, A: 0.75, B: 0.5, C: 0.25, D: 0 };
-// A matchup from win-rate stats counts half as much as a rating you entered yourself.
+// With both sources on, a matchup from win-rate stats counts half as much as a rating you entered.
 const STATS_CONFIDENCE = 0.5;
 // Win-rate change, in percentage points, that counts as a perfect (or hopeless) matchup.
 const FULL_MATCHUP_SWING = 5;
@@ -32,6 +32,14 @@ const clamp = (value, min, max) => Math.min(max, Math.max(min, value));
 const snap = (value) => Math.round(value * 1e9) / 1e9;
 const hasOwn = (object, key) => Object.prototype.hasOwnProperty.call(object, key);
 
+// Which data a score may use: 'mine' is your tier ratings only, 'stats' is Mythic stats only, and
+// anything else is both, with your ratings first.
+const sourceFlags = (ratingSource) => ({
+  useRatings: ratingSource !== 'stats',
+  useStats: ratingSource !== 'mine',
+  statsOnly: ratingSource === 'stats',
+});
+
 function traitsOf(info) {
   const roles = (info && info.roles) || [];
   const specialities = (info && info.specialities) || [];
@@ -42,7 +50,7 @@ function traitsOf(info) {
   };
 }
 
-function matchupPart(junglerId, enemies, ratings, matchupStats) {
+function matchupPart(junglerId, enemies, ratings, matchupStats, flags) {
   const junglerRatings = ratings[junglerId] || {};
   const junglerStats = matchupStats[junglerId] || {};
   let weightedValue = PRIOR_WEIGHT * 0.5;
@@ -63,16 +71,16 @@ function matchupPart(junglerId, enemies, ratings, matchupStats) {
       comment: (entry && entry.comment) || null,
     };
 
-    if (entry && hasOwn(TIER_VALUES, entry.tier)) {
+    if (flags.useRatings && entry && hasOwn(TIER_VALUES, entry.tier)) {
       Object.assign(detail, { source: 'you', tier: entry.tier, value: TIER_VALUES[entry.tier] });
       rated += 1;
-    } else if (typeof junglerStats[enemyId] === 'number') {
+    } else if (flags.useStats && typeof junglerStats[enemyId] === 'number') {
       const delta = junglerStats[enemyId];
       Object.assign(detail, { source: 'stats', delta, value: clamp(0.5 + delta / (2 * FULL_MATCHUP_SWING), 0, 1) });
     }
 
     if (detail.source) {
-      const confidence = detail.source === 'you' ? 1 : STATS_CONFIDENCE;
+      const confidence = detail.source === 'you' || flags.statsOnly ? 1 : STATS_CONFIDENCE;
       weightedValue += weight * confidence * detail.value;
       totalWeight += weight * confidence;
       known += 1;
@@ -124,10 +132,25 @@ function teamFitPart(candidateInfo, allyInfos, synergy) {
   return { value: clamp(value, 0, 1), reasons, synergy };
 }
 
-function counterRiskPart(junglerId, picksLeft, takenIds, matchupStats) {
+// Open heroes that counter this jungler: strong counters by stats, and heroes you rated Countered (D).
+// Where you rated a hero anything better, your rating overrides the stats.
+function counterRiskPart(junglerId, picksLeft, takenIds, matchupStats, ratings, flags) {
   if (picksLeft <= 0) return { points: 0, counterIds: [] };
-  const counterIds = Object.entries(matchupStats[junglerId] || {})
-    .filter(([heroId, delta]) => delta <= STRONG_COUNTER && !takenIds.has(heroId))
+  const strength = new Map(); // lower is a stronger counter
+  if (flags.useStats) {
+    Object.entries(matchupStats[junglerId] || {}).forEach(([heroId, delta]) => {
+      if (delta <= STRONG_COUNTER) strength.set(heroId, delta);
+    });
+  }
+  if (flags.useRatings) {
+    Object.entries(ratings[junglerId] || {}).forEach(([heroId, entry]) => {
+      if (!entry || !hasOwn(TIER_VALUES, entry.tier)) return;
+      if (entry.tier === 'D') strength.set(heroId, -Infinity);
+      else strength.delete(heroId);
+    });
+  }
+  const counterIds = Array.from(strength.entries())
+    .filter(([heroId]) => !takenIds.has(heroId))
     .sort((a, b) => (a[1] - b[1]) || a[0].localeCompare(b[0]))
     .map(([heroId]) => heroId);
   const points = Math.min(MAX_RISK, counterIds.length * RISK_PER_COUNTER) * (picksLeft / TEAM_SIZE);
@@ -143,7 +166,7 @@ const metaPoints = (heroMeta) => {
 };
 
 // Ranks your junglers for the current draft. With no enemy picks yet it still ranks early picks
-// (mode "blind") but recommends nobody.
+// (mode "blind") but recommends nobody. ratingSource picks the data: 'mine', 'stats' or 'both'.
 export function scoreJunglers({
   junglerIds,
   enemies = [],
@@ -156,7 +179,9 @@ export function scoreJunglers({
   synergyStats = {},
   meta = {},
   heroInfo = () => null,
+  ratingSource = 'both',
 }) {
+  const flags = sourceFlags(ratingSource);
   const taken = new Set([...enemies.map((enemy) => enemy.heroId), ...allyIds, ...unavailableIds]);
   const picksLeft = Math.max(0, TEAM_SIZE - enemies.length);
   const mode = enemies.length ? 'counter' : 'blind';
@@ -166,14 +191,15 @@ export function scoreJunglers({
     .filter((id) => !taken.has(id))
     .filter((id) => !onlyPool || isComfortRating(comfort[id]))
     .map((id) => {
-      const matchup = matchupPart(id, enemies, ratings, matchupStats);
-      const fit = teamFitPart(heroInfo(id), allyInfos, synergyWith(id, allyIds, synergyStats));
-      const risk = counterRiskPart(id, picksLeft, new Set([...taken, id]), matchupStats);
+      const matchup = matchupPart(id, enemies, ratings, matchupStats, flags);
+      const fit = teamFitPart(heroInfo(id), allyInfos, flags.useStats ? synergyWith(id, allyIds, synergyStats) : []);
+      const risk = counterRiskPart(id, picksLeft, new Set([...taken, id]), matchupStats, ratings, flags);
+      const winRate = flags.useStats && meta[id] && typeof meta[id].winRate === 'number' ? meta[id].winRate : null;
       const parts = {
         matchup: snap(SCORE_PARTS.matchup * matchup.value),
         teamFit: snap(SCORE_PARTS.teamFit * fit.value),
         comfort: snap(comfortPoints(comfort[id])),
-        meta: snap(metaPoints(meta[id])),
+        meta: snap(flags.useStats ? metaPoints(meta[id]) : SCORE_PARTS.meta / 2),
         risk: snap(risk.points),
       };
       const total = Math.round(clamp(parts.matchup + parts.teamFit + parts.comfort + parts.meta - parts.risk, 0, 100) * 10) / 10;
@@ -188,7 +214,7 @@ export function scoreJunglers({
           teamFit: { reasons: fit.reasons, synergy: fit.synergy },
           risk: { counterIds: risk.counterIds, picksLeft },
           comfort: isComfortRating(comfort[id]) ? comfort[id] : null,
-          winRate: meta[id] && typeof meta[id].winRate === 'number' ? meta[id].winRate : null,
+          winRate,
         },
       };
     })

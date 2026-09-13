@@ -1,6 +1,7 @@
 // JunglerOS draft board: both teams' picks and bans, enemy lanes, and the order slots get filled.
 // Plain functions that return new drafts, shared by the Draft Lab and the tests.
 import { LANES } from '../data/heroes.js';
+import { RATING_SOURCE_VALUES } from '../data/ratingSources.js';
 
 export const TEAM_SIZE = 5;
 export const BAN_OPTIONS = [0, 3, 4, 5];
@@ -157,16 +158,21 @@ export const isDraft = (value) =>
   isSlotList(value.enemyBans, value.bansPerTeam);
 
 // Draft settings remembered between drafts: whether there's a ban phase, how many bans each team gets
-// when there is one, and which team picks first in a new draft.
-export const DEFAULT_DRAFT_PREFERENCES = { banPhase: true, bansPerTeam: 5, firstPick: 'ally' };
+// when there is one, which team picks first in a new draft, and what recommendations are based on.
+export const DEFAULT_DRAFT_PREFERENCES = { banPhase: true, bansPerTeam: 5, firstPick: 'ally', ratingSource: 'both' };
 
+// ratingSource is optional so preferences saved before it existed still load.
 export const isDraftPreferences = (value) =>
   Boolean(value) &&
   typeof value === 'object' &&
   typeof value.banPhase === 'boolean' &&
   BAN_OPTIONS.includes(value.bansPerTeam) &&
   value.bansPerTeam > 0 &&
-  (value.firstPick === 'ally' || value.firstPick === 'enemy');
+  (value.firstPick === 'ally' || value.firstPick === 'enemy') &&
+  (value.ratingSource === undefined || RATING_SOURCE_VALUES.includes(value.ratingSource));
+
+// Adds defaults for any setting missing from saved preferences.
+export const normalizeDraftPreferences = (preferences) => ({ ...DEFAULT_DRAFT_PREFERENCES, ...preferences });
 
 export const draftFromPreferences = ({ banPhase, bansPerTeam, firstPick }) =>
   createDraft({ bansPerTeam: banPhase ? bansPerTeam : 0, firstPick });

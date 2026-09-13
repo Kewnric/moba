@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import { LANES } from '../data/heroes.js';
+import { RATING_SOURCES } from '../data/ratingSources.js';
 import { STATS_INFO } from '../data/stats.js';
 import { TIER_COLORS, TIER_LABELS } from '../data/tiers.js';
 import { SCORE_PARTS } from '../lib/scoring.js';
@@ -32,11 +33,28 @@ function ScoreBar({ entry, tall = false }) {
     );
 }
 
-function PartLegend() {
+// Switches between scoring from your ratings, Mythic stats, or both.
+function SourceSwitch({ value, onChange }) {
+    return (
+        <div role="group" aria-label="Recommendations use" className="inline-flex items-center gap-1.5">
+            <span className="text-[10px] uppercase tracking-wider text-gray-500">Use</span>
+            <div className="inline-flex rounded-md border border-white/10 overflow-hidden">
+                {RATING_SOURCES.map(source => (
+                    <button key={source.value} type="button" aria-pressed={source.value === value} title={source.description} onClick={() => onChange(source.value)}
+                        className={`px-2 h-7 text-[11px] font-semibold whitespace-nowrap focus:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-cyan-400 ${source.value === value ? 'bg-cyan-500/20 text-cyan-300' : 'text-gray-400 hover:text-white'}`}>
+                        {source.label}
+                    </button>
+                ))}
+            </div>
+        </div>
+    );
+}
+
+function PartLegend({ ratingSource }) {
     return (
         <div className="flex flex-wrap gap-x-3 gap-y-1 text-[10px] text-gray-400">
             {PART_STYLES.map(part => (
-                <span key={part.key} className="flex items-center gap-1"><span className={`w-2 h-2 rounded-sm ${part.className}`} />{part.label} (up to {SCORE_PARTS[part.key]})</span>
+                <span key={part.key} className="flex items-center gap-1"><span className={`w-2 h-2 rounded-sm ${part.className}`} />{part.label} ({part.key === 'meta' && ratingSource === 'mine' ? 'off, counts as middle' : `up to ${SCORE_PARTS[part.key]}`})</span>
             ))}
             <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-sm border border-red-400" style={RISK_PATTERN} />Counter-pick risk</span>
         </div>
@@ -103,7 +121,7 @@ function coverageText({ rated, known, total }) {
     return parts.join(' · ');
 }
 
-function PickDetails({ entry, customImages }) {
+function PickDetails({ entry, ratingSource, customImages }) {
     return (
         <div className="animate-scaleUp">
             <div className="flex items-center gap-4">
@@ -123,7 +141,7 @@ function PickDetails({ entry, customImages }) {
 
             <div className="mt-3 space-y-2">
                 <ScoreBar entry={entry} tall />
-                <PartLegend />
+                <PartLegend ratingSource={ratingSource} />
             </div>
 
             <div className="mt-4 space-y-3">
@@ -167,14 +185,26 @@ function PickDetails({ entry, customImages }) {
                 )}
                 <div className="flex flex-wrap gap-x-4 gap-y-1 text-[11px] text-gray-400">
                     <span>{entry.details.comfort ? `Your comfort: ${entry.details.comfort}/5` : 'No comfort rating yet'}</span>
-                    <span>{entry.details.winRate !== null ? `${STATS_RANK} win rate ${(entry.details.winRate * 100).toFixed(1)}%` : 'No win-rate data'}</span>
+                    <span>{ratingSource === 'mine' ? 'Win-rate stats off' : entry.details.winRate !== null ? `${STATS_RANK} win rate ${(entry.details.winRate * 100).toFixed(1)}%` : 'No win-rate data'}</span>
                 </div>
             </div>
         </div>
     );
 }
 
-export default function Recommendation({ scoring, allyJunglers = [], onlyPool, setOnlyPool, hasPool, customImages, onOpenDatabase }) {
+const FOOTERS = {
+    mine: 'Using only your tier ratings, notes and comfort. Mythic stats are off.',
+    both: `Your own ratings count double. Unrated matchups use ${STATS_RANK} stats from ${STATS_INFO.updated}.`,
+    stats: `Using only ${STATS_RANK} stats from ${STATS_INFO.updated}. Your tier ratings are off; comfort still counts.`,
+};
+
+const BLIND_INTROS = {
+    mine: 'No enemy picks yet. These junglers have the fewest open heroes you rated Countered (D), weighed with your comfort and team composition.',
+    both: `No enemy picks yet. These junglers have the fewest strong counters still open, weighed with your comfort, team fit and ${STATS_RANK} win rates.`,
+    stats: `No enemy picks yet. These junglers have the fewest strong counters still open by ${STATS_RANK} stats, weighed with your comfort, team fit and win rates.`,
+};
+
+export default function Recommendation({ scoring, ratingSource = 'both', setRatingSource, allyJunglers = [], onlyPool, setOnlyPool, hasPool, customImages, onOpenDatabase }) {
     const { mode, ranked, recommended } = scoring;
     const [viewedId, setViewedId] = useState(null);
 
@@ -198,7 +228,10 @@ export default function Recommendation({ scoring, allyJunglers = [], onlyPool, s
 
             <div className="flex flex-wrap items-center justify-between gap-2 mb-3">
                 <div className="flex items-center gap-2 text-cyan-400"><Icons.Crown size={16} /><span className="text-[10px] lg:text-xs font-bold uppercase tracking-widest">{title}</span></div>
-                <PoolSwitch onlyPool={onlyPool} setOnlyPool={setOnlyPool} hasPool={hasPool} />
+                <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
+                    {setRatingSource && <SourceSwitch value={ratingSource} onChange={setRatingSource} />}
+                    <PoolSwitch onlyPool={onlyPool} setOnlyPool={setOnlyPool} hasPool={hasPool} />
+                </div>
             </div>
 
             {allyJunglers.length > 0 && (
@@ -216,9 +249,9 @@ export default function Recommendation({ scoring, allyJunglers = [], onlyPool, s
             ) : (
                 <>
                     {mode === 'blind' && !viewed && (
-                        <p className="text-xs text-gray-400 mb-3 max-w-xl">No enemy picks yet. These junglers have the fewest strong counters still open, weighed with your comfort, team fit and {STATS_RANK} win rates.</p>
+                        <p className="text-xs text-gray-400 mb-3 max-w-xl">{BLIND_INTROS[ratingSource] || BLIND_INTROS.both}</p>
                     )}
-                    {current && <PickDetails entry={current} customImages={customImages} />}
+                    {current && <PickDetails entry={current} ratingSource={ratingSource} customImages={customImages} />}
                     {viewed && <button type="button" onClick={() => setViewedId(null)} className="text-xs text-cyan-400 hover:underline mt-3 block">&larr; {recommended ? 'Back to the recommended pick' : 'Back to the ranking'}</button>}
                     <div className={current ? 'mt-5' : ''}>
                         <h3 className={SUBHEAD}>{mode === 'blind' ? 'Ranking' : 'Top options'}</h3>
@@ -228,7 +261,7 @@ export default function Recommendation({ scoring, allyJunglers = [], onlyPool, s
             )}
 
             <div className="mt-4 pt-3 border-t border-white/5 flex flex-wrap items-center justify-between gap-2 text-[10px] text-gray-500">
-                <span>Your own ratings count double. Unrated matchups use {STATS_RANK} stats from {STATS_INFO.updated}.</span>
+                <span>{FOOTERS[ratingSource] || FOOTERS.both}</span>
                 <button type="button" onClick={onOpenDatabase} className="text-cyan-400 hover:underline">Rate matchups</button>
             </div>
         </section>

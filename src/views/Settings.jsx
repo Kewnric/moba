@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { HEROES } from '../data/heroes.js';
+import { RATING_SOURCES } from '../data/ratingSources.js';
 import { STATS_INFO } from '../data/stats.js';
 import { filterHeroes } from '../lib/heroFilter.js';
 import { Icons } from '../components/Icons.jsx';
@@ -79,6 +80,10 @@ export default function Settings({ preferences, onPreferencesChange, stats, onEx
                         <SettingRow title="First pick in a new draft" description="You can still switch it on the board for each game.">
                             <Choice label="First pick in a new draft" value={preferences.firstPick} onChange={(team) => onPreferencesChange({ firstPick: team })}
                                 options={[{ value: 'ally', label: 'Your team' }, { value: 'enemy', label: 'Enemy' }]} />
+                        </SettingRow>
+                        <SettingRow title="Recommendations use" description={`${(RATING_SOURCES.find(source => source.value === preferences.ratingSource) || RATING_SOURCES[1]).description} Applies right away, and you can also switch it on the recommendation.`}>
+                            <Choice label="Recommendations use" value={preferences.ratingSource} onChange={(source) => onPreferencesChange({ ratingSource: source })}
+                                options={RATING_SOURCES.map(({ value, label }) => ({ value, label }))} />
                         </SettingRow>
                     </div>
                 </section>

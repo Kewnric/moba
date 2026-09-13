@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useReducer, useState } from 'react';
 import { HEROES, HERO_BY_ID } from './data/heroes.js';
 import { HERO_META } from './data/stats.js';
-import { DEFAULT_DRAFT_PREFERENCES, findAllyJunglers, isDraftPreferences, resolveEnemyLanes } from './lib/draft.js';
+import { DEFAULT_DRAFT_PREFERENCES, findAllyJunglers, isDraftPreferences, normalizeDraftPreferences, resolveEnemyLanes } from './lib/draft.js';
 import { dataReducer } from './lib/dataReducer.js';
 import { addGame, createGameRecord, mergeHistory, removeGame } from './lib/history.js';
 import {
@@ -61,8 +61,8 @@ export default function App() {
     const [customImages, setCustomImages] = useState(startup.images);
     const [history, setHistory] = useState(startup.history);
     const [notice, setNotice] = useState(() => startupNotice(startup));
-    const [draftPreferences, setDraftPreferences] = useState(() =>
-        createSafeStorage(() => window.localStorage).read(STORAGE_KEYS.preferences, DEFAULT_DRAFT_PREFERENCES, isDraftPreferences));
+    const [draftPreferences, setDraftPreferences] = useState(() => normalizeDraftPreferences(
+        createSafeStorage(() => window.localStorage).read(STORAGE_KEYS.preferences, DEFAULT_DRAFT_PREFERENCES, isDraftPreferences)));
     const updateDraftPreferences = useCallback((changes) => setDraftPreferences(current => ({ ...current, ...changes })), []);
     const draftState = useDraft(draftPreferences, updateDraftPreferences);
 
@@ -209,7 +209,8 @@ export default function App() {
         synergyStats: SYNERGY,
         meta: HERO_META,
         heroInfo,
-    }), [data, draft, enemyLanes, onlyPool, hasPool, comfort]);
+        ratingSource: draftPreferences.ratingSource,
+    }), [data, draft, enemyLanes, onlyPool, hasPool, comfort, draftPreferences.ratingSource]);
 
     const scoring = useMemo(() => scoreJunglers(scoringInputs), [scoringInputs]);
 
@@ -279,6 +280,8 @@ export default function App() {
                         enemyLanes={enemyLanes}
                         defaultBanCount={draftPreferences.bansPerTeam}
                         allyJunglers={allyJunglers}
+                        ratingSource={draftPreferences.ratingSource}
+                        setRatingSource={(source) => updateDraftPreferences({ ratingSource: source })}
                         scoring={scoring}
                         onlyPool={onlyPool}
                         setOnlyPool={setOnlyPool}

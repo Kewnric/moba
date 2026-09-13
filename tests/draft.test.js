@@ -16,6 +16,7 @@ import {
   draftFromPreferences,
   isDraftPreferences,
   findAllyJunglers,
+  normalizeDraftPreferences,
 } from '../src/lib/draft.js';
 
 const fill = (draft, group, ids) =>
@@ -197,8 +198,19 @@ test('moveBetweenSlots returns the same draft for the same slot or an empty sour
   assert.equal(moveBetweenSlots(draft, { group: 'ally', index: 1 }, { group: 'ally', index: 2 }), draft);
 });
 
-test('draft preferences default to a 5-ban phase with your team picking first', () => {
-  assert.deepEqual(DEFAULT_DRAFT_PREFERENCES, { banPhase: true, bansPerTeam: 5, firstPick: 'ally' });
+test('draft preferences default to a 5-ban phase, your team picking first, and both rating sources', () => {
+  assert.deepEqual(DEFAULT_DRAFT_PREFERENCES, { banPhase: true, bansPerTeam: 5, firstPick: 'ally', ratingSource: 'both' });
+});
+
+test('isDraftPreferences checks the rating source when one is saved', () => {
+  assert.equal(isDraftPreferences({ ...DEFAULT_DRAFT_PREFERENCES, ratingSource: 'mine' }), true);
+  assert.equal(isDraftPreferences({ ...DEFAULT_DRAFT_PREFERENCES, ratingSource: 'stats' }), true);
+  assert.equal(isDraftPreferences({ ...DEFAULT_DRAFT_PREFERENCES, ratingSource: 'api' }), false);
+});
+
+test('normalizeDraftPreferences fills in settings added after the preferences were saved', () => {
+  assert.deepEqual(normalizeDraftPreferences({ banPhase: false, bansPerTeam: 4, firstPick: 'enemy' }), { banPhase: false, bansPerTeam: 4, firstPick: 'enemy', ratingSource: 'both' });
+  assert.deepEqual(normalizeDraftPreferences({ banPhase: true, bansPerTeam: 3, firstPick: 'ally', ratingSource: 'mine' }).ratingSource, 'mine');
 });
 
 test('draftFromPreferences uses the saved ban count and first pick', () => {

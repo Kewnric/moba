@@ -196,6 +196,65 @@ test('counter-pick risk skips counters already taken and shrinks as the enemy fi
   assert.deepEqual(ling.details.risk.counterIds, ['natalia']);
 });
 
+test('my-ratings mode ignores win-rate stats for matchups, synergy, meta and counters', () => {
+  const ling = byId(scoreJunglers(context({
+    ratingSource: 'mine',
+    enemies: [enemy('tigreal'), enemy('miya')],
+    allyIds: ['angela'],
+    ratings: { ling: { tigreal: { tier: 'S' } } },
+    matchupStats: { ling: { miya: 5, saber: -4 } },
+    synergyStats: { ling: { angela: 1.5 } },
+    meta: { ling: { winRate: 0.55 } },
+  }))).ling;
+  near(ling.parts.matchup, 45 * 0.75);
+  assert.equal(ling.details.matchups[1].source, null);
+  assert.deepEqual(ling.coverage, { rated: 1, known: 1, total: 2 });
+  assert.equal(ling.parts.teamFit, 10);
+  assert.deepEqual(ling.details.teamFit.synergy, []);
+  assert.equal(ling.parts.meta, 7.5);
+  assert.equal(ling.details.winRate, null);
+  assert.equal(ling.parts.risk, 0);
+});
+
+test('stats mode ignores your tier ratings, counts stats at full weight and keeps comfort', () => {
+  const ling = byId(scoreJunglers(context({
+    ratingSource: 'stats',
+    enemies: [enemy('tigreal')],
+    ratings: { ling: { tigreal: { tier: 'D' } } },
+    matchupStats: { ling: { tigreal: 5 } },
+    comfort: { ling: 5 },
+  }))).ling;
+  near(ling.parts.matchup, 45 * 0.75);
+  assert.equal(ling.details.matchups[0].source, 'stats');
+  assert.deepEqual(ling.coverage, { rated: 0, known: 1, total: 1 });
+  assert.equal(ling.parts.comfort, 20);
+});
+
+test('in both mode your rating overrides the stats for counter-pick risk', () => {
+  const ling = byId(scoreJunglers(context({
+    matchupStats: { ling: { saber: -4, natalia: -3.5 } },
+    ratings: { ling: { saber: { tier: 'B' }, nana: { tier: 'D' } } },
+  }))).ling;
+  assert.equal(ling.parts.risk, 4);
+  assert.deepEqual(ling.details.risk.counterIds, ['nana', 'natalia']);
+});
+
+test('my-ratings mode counts open heroes you rated D as counters', () => {
+  const ling = byId(scoreJunglers(context({
+    ratingSource: 'mine',
+    ratings: { ling: { nana: { tier: 'D' }, saber: { tier: 'C' } } },
+    matchupStats: { ling: { natalia: -5 } },
+  }))).ling;
+  assert.equal(ling.parts.risk, 2);
+  assert.deepEqual(ling.details.risk.counterIds, ['nana']);
+});
+
+test('an unknown rating source behaves like both', () => {
+  const ling = byId(scoreJunglers(context({ ratingSource: 'nonsense', enemies: [enemy('tigreal')], matchupStats: { ling: { tigreal: 5 } } }))).ling;
+  near(ling.parts.matchup, 45 * (1 / 1.5));
+  assert.equal(ling.details.matchups[0].source, 'stats');
+});
+
 test('ties are ranked by id', () => {
   assert.deepEqual(ids(scoreJunglers(context({ junglerIds: ['ling', 'fanny'] }))), ['fanny', 'ling']);
 });
