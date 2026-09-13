@@ -24,7 +24,7 @@ export default function DataHub({ stats, onExport, onImport, onReset }) {
                 </div>
                 <div className="mt-6 rounded-xl border border-white/5 bg-slate-800/40 p-4 space-y-1.5">
                     <h3 className="text-sm font-bold text-white">Matchup and win-rate stats</h3>
-                    <p className="text-xs text-gray-400">From {STATS_RANK}-rank games, updated {STATS_INFO.updated} (win rates cover the last {STATS_INFO.days} days). They fill in any matchup you haven't rated, at half the weight of your own ratings.</p>
+                    <p className="text-xs text-gray-400">From {STATS_RANK}-rank games, updated {STATS_INFO.updated} (win rates cover the last {STATS_INFO.days} days). They fill in any matchup you haven't rated, at half the weight of your own ratings. Duo win rates with your teammates adjust team fit.</p>
                     <p className="text-[10px] text-gray-500">Powered by the Rone Arena API · Game data © Moonton (Mobile Legends: Bang Bang) · API maintained by ridwaanhall / RoneAI</p>
                 </div>
                 <div className="mt-6 lg:mt-8 pt-5 lg:pt-6 border-t border-white/10 flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3 text-xs text-gray-500 w-full">

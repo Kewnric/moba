@@ -138,6 +138,16 @@ function PickDetails({ entry, customImages }) {
                 <div>
                     <h3 className={SUBHEAD}>Team fit</h3>
                     <ul className="text-xs text-gray-300 space-y-0.5">{entry.details.teamFit.reasons.map(reason => <li key={reason}>{reason}</li>)}</ul>
+                    {entry.details.teamFit.synergy.length > 0 && (
+                        <div className="flex flex-wrap gap-1.5 mt-1.5">
+                            {entry.details.teamFit.synergy.map(({ allyId, delta }) => (
+                                <span key={allyId} title={`${STATS_RANK} win-rate change when ${heroName(entry.id)} and ${heroName(allyId)} are on the same team`}
+                                    className={`text-[10px] rounded px-1.5 py-0.5 border whitespace-nowrap ${delta >= 1 ? 'border-emerald-500/30 bg-emerald-500/10 text-emerald-300' : delta <= -1 ? 'border-red-500/30 bg-red-500/10 text-red-300' : 'border-white/10 bg-slate-800 text-gray-300'}`}>
+                                    with {heroName(allyId)} <span className="font-mono font-bold">{delta > 0 ? '+' : ''}{delta.toFixed(1)}</span>
+                                </span>
+                            ))}
+                        </div>
+                    )}
                 </div>
                 {entry.parts.risk > 0 && (
                     <div>

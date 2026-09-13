@@ -24,7 +24,7 @@ Each available jungler gets a score out of 100:
 | Part | Up to | What it measures |
 | --- | --- | --- |
 | Matchups | 45 | How it does against every enemy pick. Your tier ratings (S best, D worst) count fully. Matchups you haven't rated use Mythic win-rate stats at half weight, where +5 points or more is the best case. The enemy jungler counts 1.5 times. |
-| Team fit | 20 | Once two teammates have picked: extra points for bringing a frontline, magic damage or crowd control your team is missing. |
+| Team fit | 20 | Once two teammates have picked: extra points for bringing a frontline, magic damage or crowd control your team is missing. Mythic duo win rates with the teammates already picked add or remove up to 5 points. |
 | Comfort | 20 | Your 1–5 comfort rating on that jungler. Unrated junglers get the middle. |
 | Meta | 15 | Mythic win rate over the last 15 days. 55% or higher gets full points; 45% or lower gets none. |
 | Counter-pick risk | −10 | 2 points for each still-open hero that drops this jungler's win rate by 3 points or more, shrinking as the enemy fills its picks. |
@@ -53,7 +53,7 @@ npm run dev
 | --- | --- |
 | `npm test` | Runs the Vitest tests in `tests/` |
 | `npm run build` | Bundles `src/` into one file and writes it to `index.html` |
-| `npm run update-stats` | Downloads fresh Mythic matchup and win-rate stats into `src/data/stats.js` |
+| `npm run update-stats` | Downloads fresh Mythic matchup, teammate and win-rate stats into `src/data/stats.js` |
 
 `index.html` in the repo root is generated. Change the files in `src/`, run `npm run build`, and commit the new `index.html` together with your change. CI fails if the two don't match, because GitHub Pages serves that file straight from `main`.
 

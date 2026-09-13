@@ -1,8 +1,8 @@
 import { test } from 'vitest';
 import assert from 'node:assert/strict';
 import { HEROES } from '../src/data/heroes.js';
-import { STATS_INFO, STATS_HERO_ORDER, MATCHUP_TENTHS, HERO_META } from '../src/data/stats.js';
-import { decodeMatchups, matchupDelta, heroMeta } from '../src/lib/stats.js';
+import { STATS_INFO, STATS_HERO_ORDER, MATCHUP_TENTHS, SYNERGY_TENTHS, HERO_META } from '../src/data/stats.js';
+import { decodeMatchups, matchupDelta, synergyDelta, heroMeta } from '../src/lib/stats.js';
 
 test('decodeMatchups turns tenths of a point into percentage points and skips gaps', () => {
   // eslint-disable-next-line no-sparse-arrays
@@ -50,6 +50,24 @@ test('matchup changes and rates are in realistic ranges', () => {
   Object.values(HERO_META).forEach((meta) => {
     ['winRate', 'banRate', 'pickRate'].forEach((key) => assert.ok(meta[key] >= 0 && meta[key] <= 1, `${key} ${meta[key]}`));
   });
+});
+
+test('teammate synergy stats cover every hero with realistic values', () => {
+  assert.equal(SYNERGY_TENTHS.length, STATS_HERO_ORDER.length);
+  const decoded = decodeMatchups(STATS_HERO_ORDER, SYNERGY_TENTHS);
+  STATS_HERO_ORDER.forEach((id) => {
+    const known = Object.keys(decoded[id]).length;
+    assert.ok(known >= 60, `${id} only has ${known} teammates`);
+  });
+  // Two heroes from the same lane on one team can swing win rate by about 40 points (Chip with Khufra
+  // is -37.6), so the bound only catches scaling mistakes.
+  SYNERGY_TENTHS.forEach((row) => row.forEach((value) => assert.ok(Math.abs(value) <= 600, `synergy change ${value / 10} points`)));
+});
+
+test('synergyDelta returns null when there is no data', () => {
+  assert.equal(synergyDelta('ling', 'ling'), null);
+  assert.equal(synergyDelta('ling', 'nobody'), null);
+  assert.equal(typeof synergyDelta('ling', 'angela'), 'number');
 });
 
 test('STATS_INFO records the rank and date of the numbers', () => {

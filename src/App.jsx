@@ -15,7 +15,7 @@ import {
     normalizeImport,
 } from './lib/saveData.js';
 import { scoreJunglers } from './lib/scoring.js';
-import { MATCHUPS } from './lib/stats.js';
+import { MATCHUPS, SYNERGY } from './lib/stats.js';
 import { createSafeStorage } from './lib/storage.js';
 import { compressImage, downloadJson } from './lib/files.js';
 import { useDraft } from './hooks/useDraft.js';
@@ -174,6 +174,7 @@ export default function App() {
         comfort,
         onlyPool: onlyPool && hasPool,
         matchupStats: MATCHUPS,
+        synergyStats: SYNERGY,
         meta: HERO_META,
         heroInfo,
     }), [data, draft, enemyLanes, onlyPool, hasPool, comfort]);

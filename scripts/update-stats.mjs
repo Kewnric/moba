@@ -39,15 +39,16 @@ async function forEachLimited(items, limit, task) {
   }));
 }
 
-// Row for one hero: how its win rate changes against every other hero, in tenths of a point.
-async function fetchMatchupRow(hero) {
-  const data = await getData(`/academy/heroes/${hero.apiId}/counters?rank=${RANK}`);
+// Row for one hero: how its win rate changes against ('counters') or alongside ('teammates') every
+// other hero, in tenths of a point.
+async function fetchRow(hero, kind) {
+  const data = await getData(`/academy/heroes/${hero.apiId}/${kind}?rank=${RANK}`);
   const record = data.records[0] && data.records[0].data;
-  if (!record) throw new Error(`no matchup data for ${hero.name}`);
+  if (!record) throw new Error(`no ${kind} data for ${hero.name}`);
   const row = new Array(order.length);
   record.sub_hero.forEach((entry) => {
-    const enemyId = idByApiId.get(entry.heroid);
-    if (enemyId && enemyId !== hero.id) row[indexOf.get(enemyId)] = Math.round(entry.increase_win_rate * 1000);
+    const otherId = idByApiId.get(entry.heroid);
+    if (otherId && otherId !== hero.id) row[indexOf.get(otherId)] = Math.round(entry.increase_win_rate * 1000);
   });
   return row;
 }
@@ -71,11 +72,13 @@ async function fetchMeta() {
 }
 
 const rows = new Array(order.length);
+const synergyRows = new Array(order.length);
 let done = 0;
 await forEachLimited(HEROES, CONCURRENCY, async (hero) => {
-  rows[indexOf.get(hero.id)] = await fetchMatchupRow(hero);
+  rows[indexOf.get(hero.id)] = await fetchRow(hero, 'counters');
+  synergyRows[indexOf.get(hero.id)] = await fetchRow(hero, 'teammates');
   done += 1;
-  if (done % 20 === 0 || done === HEROES.length) console.log(`matchups: ${done}/${HEROES.length}`);
+  if (done % 20 === 0 || done === HEROES.length) console.log(`heroes: ${done}/${HEROES.length}`);
 });
 const meta = await fetchMeta();
 
@@ -83,7 +86,9 @@ const missingMeta = order.filter((id) => !meta[id]);
 if (missingMeta.length) throw new Error(`no win rates for: ${missingMeta.join(', ')}`);
 order.forEach((id, index) => {
   const known = rows[index].filter((value) => value !== undefined).length;
+  const teammates = synergyRows[index].filter((value) => value !== undefined).length;
   if (known < 60) console.warn(`warning: ${id} only has ${known} matchups`);
+  if (teammates < 60) console.warn(`warning: ${id} only has ${teammates} teammates`);
 });
 
 const updated = new Date().toISOString().slice(0, 10);
@@ -106,6 +111,12 @@ export const STATS_HERO_ORDER = ${JSON.stringify(order)};
 // point (39 means +3.9 points). Empty entries have no data.
 export const MATCHUP_TENTHS = [
 ${rows.map((row) => `  ${rowText(row)},`).join('\n')}
+];
+
+// SYNERGY_TENTHS[a][b]: how much hero a's win rate changes when hero b is on the same team, in tenths
+// of a percentage point. Empty entries have no data.
+export const SYNERGY_TENTHS = [
+${synergyRows.map((row) => `  ${rowText(row)},`).join('\n')}
 ];
 
 // Win, ban and pick rates over the last ${DAYS} days, from 0 to 1.

@@ -21,6 +21,11 @@ const STRONG_COUNTER = -3;
 const RISK_PER_COUNTER = 2;
 const TEAM_SIZE = 5;
 const MIN_ALLIES_FOR_TEAM_FIT = 2;
+// Duo win-rate change, in percentage points, that counts as the best (or worst) possible teammate.
+// Bigger changes, such as two junglers on one team, are capped here.
+const FULL_SYNERGY_SWING = 3;
+// Synergy with your teammates moves team fit by at most this share of its points.
+const SYNERGY_SHARE = 0.25;
 
 const clamp = (value, min, max) => Math.min(max, Math.max(min, value));
 // Removes floating-point noise such as 11.999999999999996.
@@ -70,29 +75,45 @@ function matchupPart(junglerId, enemies, ratings, matchupStats) {
   return { value: weightedValue / totalWeight, rated, known, details };
 }
 
-function teamFitPart(candidateInfo, allyInfos) {
-  if (allyInfos.length < MIN_ALLIES_FOR_TEAM_FIT) {
-    return { value: 0.5, reasons: ['Team fit counts once two of your teammates have picked.'] };
-  }
-  const team = allyInfos.map(traitsOf);
-  const candidate = traitsOf(candidateInfo);
+// Duo win-rate changes between a jungler and each teammate already picked that has stats.
+function synergyWith(junglerId, allyIds, synergyStats) {
+  const junglerStats = synergyStats[junglerId] || {};
+  return allyIds
+    .filter((allyId) => typeof junglerStats[allyId] === 'number')
+    .map((allyId) => ({ allyId, delta: junglerStats[allyId] }));
+}
+
+function teamFitPart(candidateInfo, allyInfos, synergy) {
   const reasons = [];
   let value = 0.5;
 
-  if (!team.some((traits) => traits.frontline)) {
-    if (candidate.frontline) { value += 0.25; reasons.push('Adds a frontline your team is missing.'); }
-    else { value -= 0.15; reasons.push('Your team still has no frontline.'); }
+  if (allyInfos.length < MIN_ALLIES_FOR_TEAM_FIT) {
+    reasons.push('Team composition counts once two of your teammates have picked.');
+  } else {
+    const team = allyInfos.map(traitsOf);
+    const candidate = traitsOf(candidateInfo);
+    if (!team.some((traits) => traits.frontline)) {
+      if (candidate.frontline) { value += 0.25; reasons.push('Adds a frontline your team is missing.'); }
+      else { value -= 0.15; reasons.push('Your team still has no frontline.'); }
+    }
+    if (!team.some((traits) => traits.magic)) {
+      if (candidate.magic) { value += 0.25; reasons.push('Adds magic damage to an all-physical team.'); }
+      else { value -= 0.1; reasons.push("Your team's damage stays all physical."); }
+    }
+    if (!team.some((traits) => traits.control) && candidate.control) {
+      value += 0.1;
+      reasons.push('Adds crowd control your team is missing.');
+    }
+    if (!reasons.length) reasons.push('Your team already has a frontline, magic damage and crowd control.');
   }
-  if (!team.some((traits) => traits.magic)) {
-    if (candidate.magic) { value += 0.25; reasons.push('Adds magic damage to an all-physical team.'); }
-    else { value -= 0.1; reasons.push("Your team's damage stays all physical."); }
+
+  if (synergy.length) {
+    const capped = synergy.map(({ delta }) => clamp(delta, -FULL_SYNERGY_SWING, FULL_SYNERGY_SWING));
+    const average = capped.reduce((sum, delta) => sum + delta, 0) / capped.length;
+    value += (average / FULL_SYNERGY_SWING) * SYNERGY_SHARE;
   }
-  if (!team.some((traits) => traits.control) && candidate.control) {
-    value += 0.1;
-    reasons.push('Adds crowd control your team is missing.');
-  }
-  if (!reasons.length) reasons.push('Your team already has a frontline, magic damage and crowd control.');
-  return { value: clamp(value, 0, 1), reasons };
+
+  return { value: clamp(value, 0, 1), reasons, synergy };
 }
 
 function counterRiskPart(junglerId, picksLeft, takenIds, matchupStats) {
@@ -124,6 +145,7 @@ export function scoreJunglers({
   comfort = {},
   onlyPool = false,
   matchupStats = {},
+  synergyStats = {},
   meta = {},
   heroInfo = () => null,
 }) {
@@ -137,7 +159,7 @@ export function scoreJunglers({
     .filter((id) => !onlyPool || isComfortRating(comfort[id]))
     .map((id) => {
       const matchup = matchupPart(id, enemies, ratings, matchupStats);
-      const fit = teamFitPart(heroInfo(id), allyInfos);
+      const fit = teamFitPart(heroInfo(id), allyInfos, synergyWith(id, allyIds, synergyStats));
       const risk = counterRiskPart(id, picksLeft, new Set([...taken, id]), matchupStats);
       const parts = {
         matchup: snap(SCORE_PARTS.matchup * matchup.value),
@@ -155,7 +177,7 @@ export function scoreJunglers({
         confident: enemies.length > 0 && matchup.known / enemies.length >= MIN_COVERAGE,
         details: {
           matchups: matchup.details,
-          teamFit: { reasons: fit.reasons },
+          teamFit: { reasons: fit.reasons, synergy: fit.synergy },
           risk: { counterIds: risk.counterIds, picksLeft },
           comfort: isComfortRating(comfort[id]) ? comfort[id] : null,
           winRate: meta[id] && typeof meta[id].winRate === 'number' ? meta[id].winRate : null,

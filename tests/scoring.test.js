@@ -124,6 +124,30 @@ test('team fit rewards magic damage when your team has none', () => {
   assert.ok(entries.karina.details.teamFit.reasons.some((reason) => /magic/i.test(reason)));
 });
 
+test('team fit adds synergy with a teammate already picked', () => {
+  const ling = byId(scoreJunglers(context({ junglerIds: ['ling'], allyIds: ['angela'], synergyStats: { ling: { angela: 1.5 } } }))).ling;
+  near(ling.parts.teamFit, 20 * 0.625);
+  assert.deepEqual(ling.details.teamFit.synergy, [{ allyId: 'angela', delta: 1.5 }]);
+});
+
+test('synergy is capped, so a clashing teammate costs at most a quarter of team fit', () => {
+  const ling = byId(scoreJunglers(context({ junglerIds: ['ling'], allyIds: ['hayabusa'], synergyStats: { ling: { hayabusa: -16 } } }))).ling;
+  near(ling.parts.teamFit, 20 * 0.25);
+  assert.deepEqual(ling.details.teamFit.synergy, [{ allyId: 'hayabusa', delta: -16 }]);
+});
+
+test('synergy averages across teammates on top of team composition', () => {
+  const ling = byId(scoreJunglers(context({ junglerIds: ['ling'], allyIds: ['tigreal', 'nana'], synergyStats: { ling: { tigreal: 3, nana: -1 } } }))).ling;
+  near(ling.parts.teamFit, 20 * (0.5 + (1 / 3) * 0.25));
+  assert.ok(ling.details.teamFit.reasons.some((reason) => /already has/i.test(reason)));
+});
+
+test('team fit lists no synergy without stats for your teammates', () => {
+  const ling = byId(scoreJunglers(context({ junglerIds: ['ling'], allyIds: ['angela'] }))).ling;
+  assert.deepEqual(ling.details.teamFit.synergy, []);
+  assert.equal(ling.parts.teamFit, 10);
+});
+
 test('comfort turns a 1 to 5 rating into up to 20 points', () => {
   const entries = byId(scoreJunglers(context({ junglerIds: ['ling', 'fanny', 'karina'], comfort: { ling: 5, fanny: 1 } })));
   assert.equal(entries.ling.parts.comfort, 20);

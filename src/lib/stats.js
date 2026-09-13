@@ -1,15 +1,15 @@
-import { HERO_META, MATCHUP_TENTHS, STATS_HERO_ORDER } from '../data/stats.js';
+import { HERO_META, MATCHUP_TENTHS, STATS_HERO_ORDER, SYNERGY_TENTHS } from '../data/stats.js';
 
-// Expands the compact stats table into { heroId: { enemyId: winRateChangeInPoints } }, skipping gaps
-// and a hero's entry against itself.
+// Expands a compact stats table into { heroId: { otherId: winRateChangeInPoints } }, skipping gaps
+// and a hero's entry for itself.
 export function decodeMatchups(order, rows) {
   const matchups = {};
   order.forEach((heroId, rowIndex) => {
     const row = rows[rowIndex] || [];
     const entries = {};
-    order.forEach((enemyId, columnIndex) => {
+    order.forEach((otherId, columnIndex) => {
       const tenths = row[columnIndex];
-      if (enemyId !== heroId && typeof tenths === 'number') entries[enemyId] = tenths / 10;
+      if (otherId !== heroId && typeof tenths === 'number') entries[otherId] = tenths / 10;
     });
     matchups[heroId] = entries;
   });
@@ -17,11 +17,17 @@ export function decodeMatchups(order, rows) {
 }
 
 export const MATCHUPS = decodeMatchups(STATS_HERO_ORDER, MATCHUP_TENTHS);
+export const SYNERGY = decodeMatchups(STATS_HERO_ORDER, SYNERGY_TENTHS);
+
+const lookup = (table, heroId, otherId) => {
+  const entries = table[heroId];
+  return entries && typeof entries[otherId] === 'number' ? entries[otherId] : null;
+};
 
 // How many percentage points heroId's win rate changes when facing enemyId, or null without data.
-export const matchupDelta = (heroId, enemyId) => {
-  const entries = MATCHUPS[heroId];
-  return entries && typeof entries[enemyId] === 'number' ? entries[enemyId] : null;
-};
+export const matchupDelta = (heroId, enemyId) => lookup(MATCHUPS, heroId, enemyId);
+
+// How many percentage points heroId's win rate changes with allyId on the same team, or null without data.
+export const synergyDelta = (heroId, allyId) => lookup(SYNERGY, heroId, allyId);
 
 export const heroMeta = (heroId) => HERO_META[heroId] || null;
