@@ -75,7 +75,7 @@ function MatchupChip({ matchup }) {
     );
 }
 
-function RankedList({ entries, currentId, onSelect, customImages }) {
+function RankedList({ entries, currentId, onSelect }) {
     return (
         <ol className="space-y-1.5">
             {entries.map((entry, index) => (
@@ -83,7 +83,7 @@ function RankedList({ entries, currentId, onSelect, customImages }) {
                     <button type="button" onClick={() => onSelect(entry)} aria-current={entry.id === currentId ? 'true' : undefined}
                         className={`w-full grid grid-cols-[1rem_2rem_minmax(0,1fr)_2.25rem] items-center gap-2 rounded-lg px-2 py-1.5 text-left transition-colors ${entry.id === currentId ? 'bg-cyan-500/10 border border-cyan-500/40' : 'bg-slate-800/40 border border-white/5 hover:border-white/20'}`}>
                         <span className="text-[10px] font-mono text-gray-500 text-right">{index + 1}</span>
-                        <div className="w-8 h-8"><HeroAvatar heroId={entry.id} size="fill" className="w-full h-full" showTooltip={false} customImages={customImages} /></div>
+                        <div className="w-8 h-8"><HeroAvatar heroId={entry.id} size="fill" className="w-full h-full" showTooltip={false} /></div>
                         <div className="min-w-0 space-y-1">
                             <div className="flex items-center justify-between gap-2">
                                 <span className="text-xs font-semibold text-white truncate">{heroName(entry.id)}</span>
@@ -121,13 +121,13 @@ function coverageText({ rated, known, total }) {
     return parts.join(' · ');
 }
 
-function PickDetails({ entry, ratingSource, customImages }) {
+function PickDetails({ entry, ratingSource }) {
     return (
         <div className="animate-scaleUp">
             <div className="flex items-center gap-4">
                 <div className="relative shrink-0 w-16 h-16 lg:w-24 lg:h-24">
                     <div className="absolute inset-0 bg-cyan-500 blur-[40px] opacity-20 rounded-full"></div>
-                    <HeroAvatar heroId={entry.id} size="fill" className="w-full h-full" showTooltip={false} customImages={customImages} />
+                    <HeroAvatar heroId={entry.id} size="fill" className="w-full h-full" showTooltip={false} />
                 </div>
                 <div className="flex-1 min-w-0">
                     <h2 className="text-2xl lg:text-4xl font-black text-white tracking-tight truncate">{heroName(entry.id)}</h2>
@@ -204,7 +204,7 @@ const BLIND_INTROS = {
     stats: `No enemy picks yet. These junglers have the fewest strong counters still open by ${STATS_RANK} stats, weighed with your comfort, team fit and win rates.`,
 };
 
-export default function Recommendation({ scoring, ratingSource = 'both', setRatingSource, allyJunglers = [], onlyPool, setOnlyPool, hasPool, customImages, onOpenDatabase }) {
+export default function Recommendation({ scoring, ratingSource = 'both', setRatingSource, allyJunglers = [], onlyPool, setOnlyPool, hasPool, onOpenDatabase }) {
     const { mode, ranked, recommended } = scoring;
     const [viewedId, setViewedId] = useState(null);
 
@@ -251,11 +251,11 @@ export default function Recommendation({ scoring, ratingSource = 'both', setRati
                     {mode === 'blind' && !viewed && (
                         <p className="text-xs text-gray-400 mb-3 max-w-xl">{BLIND_INTROS[ratingSource] || BLIND_INTROS.both}</p>
                     )}
-                    {current && <PickDetails entry={current} ratingSource={ratingSource} customImages={customImages} />}
+                    {current && <PickDetails entry={current} ratingSource={ratingSource} />}
                     {viewed && <button type="button" onClick={() => setViewedId(null)} className="text-xs text-cyan-400 hover:underline mt-3 block">&larr; {recommended ? 'Back to the recommended pick' : 'Back to the ranking'}</button>}
                     <div className={current ? 'mt-5' : ''}>
                         <h3 className={SUBHEAD}>{mode === 'blind' ? 'Ranking' : 'Top options'}</h3>
-                        <RankedList entries={ranked.slice(0, LIST_SIZE)} currentId={current && current.id} onSelect={select} customImages={customImages} />
+                        <RankedList entries={ranked.slice(0, LIST_SIZE)} currentId={current && current.id} onSelect={select} />
                     </div>
                 </>
             )}

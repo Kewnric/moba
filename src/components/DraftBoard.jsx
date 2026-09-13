@@ -49,7 +49,7 @@ const slotDragProps = (drag, slot, heroId) => ({
     onDrop: (e) => drag.onDrop(e, slot),
 });
 
-function PickSlot({ heroId, slot, active, team, drag, customImages, onSelect, onClear }) {
+function PickSlot({ heroId, slot, active, team, drag, onSelect, onClear }) {
     const filledBorder = team === 'ally' ? 'border-cyan-500/70' : 'border-red-500/70';
     const isDropTarget = sameSlot(drag.overSlot, slot);
     return (
@@ -57,7 +57,7 @@ function PickSlot({ heroId, slot, active, team, drag, customImages, onSelect, on
             <button type="button" onClick={() => onSelect(slot)} aria-pressed={active}
                 aria-label={heroId ? `${slotName(slot)}: ${heroName(heroId)}` : `${slotName(slot)}: empty`}
                 className={`w-full aspect-square rounded-xl border-2 flex items-center justify-center overflow-hidden transition-all focus:outline-none focus-visible:ring-2 focus-visible:ring-white ${heroId ? `bg-slate-800 ${filledBorder}` : 'bg-slate-900/60 border-dashed border-white/15 text-white/25'} ${active ? 'ring-2 ring-yellow-400 ring-offset-2 ring-offset-[#0f172a]' : ''}`}>
-                {heroId ? <HeroAvatar heroId={heroId} size="fill" className="w-full h-full pointer-events-none" showTooltip={false} customImages={customImages} /> : <Icons.Plus size={18} />}
+                {heroId ? <HeroAvatar heroId={heroId} size="fill" className="w-full h-full pointer-events-none" showTooltip={false} /> : <Icons.Plus size={18} />}
             </button>
             {heroId && (
                 <button type="button" onClick={() => onClear(slot)} aria-label={`Remove ${heroName(heroId)}`}
@@ -69,7 +69,7 @@ function PickSlot({ heroId, slot, active, team, drag, customImages, onSelect, on
     );
 }
 
-function BanSlot({ heroId, slot, active, drag, customImages, onSelect }) {
+function BanSlot({ heroId, slot, active, drag, onSelect }) {
     const isDropTarget = sameSlot(drag.overSlot, slot);
     return (
         <div className={`rounded-md transition-transform ${isDropTarget ? DROP_TARGET : ''} ${heroId ? 'cursor-grab active:cursor-grabbing' : ''}`} {...slotDragProps(drag, slot, heroId)}>
@@ -77,14 +77,14 @@ function BanSlot({ heroId, slot, active, drag, customImages, onSelect }) {
                 aria-label={heroId ? `${slotName(slot)}: ${heroName(heroId)}` : `${slotName(slot)}: empty`}
                 className={`w-7 h-7 lg:w-9 lg:h-9 rounded-md border overflow-hidden flex items-center justify-center shrink-0 transition-all focus:outline-none focus-visible:ring-2 focus-visible:ring-white ${heroId ? 'border-white/20' : 'border-dashed border-white/15 bg-slate-900/60'} ${active ? 'ring-2 ring-yellow-400' : ''}`}>
                 {heroId
-                    ? <HeroAvatar heroId={heroId} size="fill" className="w-full h-full grayscale pointer-events-none" showTooltip={false} customImages={customImages} />
+                    ? <HeroAvatar heroId={heroId} size="fill" className="w-full h-full grayscale pointer-events-none" showTooltip={false} />
                     : <span className="text-[10px] text-white/20">—</span>}
             </button>
         </div>
     );
 }
 
-function TeamRow({ team, title, draftState, enemyLanes, drag, customImages }) {
+function TeamRow({ team, title, draftState, enemyLanes, drag }) {
     const { draft, activeSlot } = draftState;
     const banGroup = team === 'ally' ? 'allyBans' : 'enemyBans';
     const accent = team === 'ally' ? 'text-cyan-400' : 'text-red-400';
@@ -102,7 +102,7 @@ function TeamRow({ team, title, draftState, enemyLanes, drag, customImages }) {
                     <div className="flex items-center gap-1">
                         <span className="text-[9px] uppercase tracking-wider text-gray-500 mr-0.5">Bans</span>
                         {draft[banGroup].map((heroId, index) => (
-                            <BanSlot key={index} heroId={heroId} slot={{ group: banGroup, index }} active={sameSlot(activeSlot, { group: banGroup, index })} drag={drag} customImages={customImages} onSelect={draftState.selectSlot} />
+                            <BanSlot key={index} heroId={heroId} slot={{ group: banGroup, index }} active={sameSlot(activeSlot, { group: banGroup, index })} drag={drag} onSelect={draftState.selectSlot} />
                         ))}
                     </div>
                 )}
@@ -110,7 +110,7 @@ function TeamRow({ team, title, draftState, enemyLanes, drag, customImages }) {
             <div className="grid grid-cols-5 gap-2 lg:gap-4">
                 {draft[team].map((heroId, index) => (
                     <div key={index} className="min-w-0 flex flex-col items-center gap-1">
-                        <PickSlot heroId={heroId} slot={{ group: team, index }} team={team} active={sameSlot(activeSlot, { group: team, index })} drag={drag} customImages={customImages} onSelect={draftState.selectSlot} onClear={draftState.clearSlot} />
+                        <PickSlot heroId={heroId} slot={{ group: team, index }} team={team} active={sameSlot(activeSlot, { group: team, index })} drag={drag} onSelect={draftState.selectSlot} onClear={draftState.clearSlot} />
                         <div className="hidden lg:block h-4 max-w-full truncate text-[10px] font-semibold text-gray-300">{heroId ? heroName(heroId) : ''}</div>
                         {team === 'enemy' && (heroId ? (
                             <select aria-label={`Lane for ${heroName(heroId)}`} value={draft.enemyLanes[index] || ''} onChange={(e) => draftState.setEnemyLane(index, e.target.value || null)}
@@ -126,7 +126,7 @@ function TeamRow({ team, title, draftState, enemyLanes, drag, customImages }) {
     );
 }
 
-export default function DraftBoard({ draftState, enemyLanes, drag, defaultBanCount, customImages }) {
+export default function DraftBoard({ draftState, enemyLanes, drag, defaultBanCount }) {
     const { draft, activeSlot, canUndo } = draftState;
     const [showSettings, setShowSettings] = useState(false);
     const activeHero = activeSlot ? draft[activeSlot.group][activeSlot.index] : null;
@@ -161,8 +161,8 @@ export default function DraftBoard({ draftState, enemyLanes, drag, defaultBanCou
                 </div>
             )}
 
-            <TeamRow team="ally" title="Your team" draftState={draftState} enemyLanes={enemyLanes} drag={drag} customImages={customImages} />
-            <TeamRow team="enemy" title="Enemy" draftState={draftState} enemyLanes={enemyLanes} drag={drag} customImages={customImages} />
+            <TeamRow team="ally" title="Your team" draftState={draftState} enemyLanes={enemyLanes} drag={drag} />
+            <TeamRow team="enemy" title="Enemy" draftState={draftState} enemyLanes={enemyLanes} drag={drag} />
         </section>
     );
 }

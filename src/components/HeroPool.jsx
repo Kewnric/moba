@@ -9,7 +9,6 @@ export default function HeroPool({
     highlight = false,
     onHeroClick = null,
     onEditNote = null,
-    customImages,
     setTooltip,
     dragSource,
     onDragStart = null,
@@ -40,7 +39,7 @@ export default function HeroPool({
                         title={takenLabel ? `${hero.name} (${takenLabel})` : hero.name}
                         className={`relative rounded-xl bg-slate-800/50 p-1.5 lg:p-2 border border-white/5 transition-all focus:outline-none focus-visible:ring-2 focus-visible:ring-cyan-400 ${takenLabel ? 'opacity-40 cursor-not-allowed' : `${canDrag ? 'cursor-grab active:cursor-grabbing' : 'cursor-pointer'} hover:bg-slate-700`} ${highlight && !takenLabel ? 'ring-2 ring-yellow-400 bg-yellow-400/10' : ''}`}>
                         {takenLabel && <span className="absolute top-1 left-1/2 -translate-x-1/2 z-30 text-[8px] font-bold uppercase tracking-wider text-red-300 bg-black/80 px-1 rounded">{takenLabel}</span>}
-                        <HeroAvatar heroId={hero.id} size="sm" quickNote={quickNote} onEditNote={onEditNote ? () => onEditNote(hero.id, quickNote) : null} customImages={customImages} setTooltip={setTooltip} />
+                        <HeroAvatar heroId={hero.id} size="sm" quickNote={quickNote} onEditNote={onEditNote ? () => onEditNote(hero.id, quickNote) : null} setTooltip={setTooltip} />
                         <div className="text-[10px] text-gray-400 text-center mt-1 truncate w-full">{hero.name}</div>
                     </div>
                 );

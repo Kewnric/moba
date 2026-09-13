@@ -23,7 +23,6 @@ export default function DatabaseEditor({
     onDeleteJungler,
     onEditQuickNote,
     onEditComment,
-    customImages,
     setTooltip,
     draggingSource,
     onDragStart,
@@ -141,7 +140,7 @@ export default function DatabaseEditor({
                                                     <div role={quickTier ? 'button' : undefined} tabIndex={quickTier ? 0 : undefined} onClick={() => handleRatedHeroTap(item.enemyId)}
                                                         onKeyDown={(e) => { if (quickTier && (e.key === 'Enter' || e.key === ' ')) { e.preventDefault(); handleRatedHeroTap(item.enemyId); } }}
                                                         className={quickTier ? 'cursor-pointer rounded-xl focus:outline-none focus-visible:ring-2 focus-visible:ring-cyan-400' : ''}>
-                                                        <HeroAvatar heroId={item.enemyId} size="md" quickNote={item.quickNote} onEditNote={() => onEditQuickNote(item.enemyId, item.quickNote || '')} customImages={customImages} setTooltip={setTooltip} />
+                                                        <HeroAvatar heroId={item.enemyId} size="md" quickNote={item.quickNote} onEditNote={() => onEditQuickNote(item.enemyId, item.quickNote || '')} setTooltip={setTooltip} />
                                                     </div>
                                                     <button type="button" onClick={() => onEditComment(item.enemyId, item.comment || '')} aria-label={`${item.comment ? 'Edit' : 'Add'} long note for ${heroName(item.enemyId)}`}
                                                         className={`absolute -bottom-1 -right-1 z-20 p-1 rounded-full shadow-lg transition-opacity ${item.comment ? 'bg-cyan-400 text-black' : 'bg-slate-700 text-gray-300 hover:text-white [@media(hover:hover)]:opacity-0 [@media(hover:hover)]:group-hover/item:opacity-100'}`}>
@@ -190,7 +189,7 @@ export default function DatabaseEditor({
                                 highlight={isRating}
                                 onHeroClick={(heroId) => { if (isRating) rate(heroId, quickTier); }}
                                 onEditNote={(heroId, note) => onEditQuickNote(heroId, note || '')}
-                                customImages={customImages}
+                               
                                 setTooltip={setTooltip}
                                 dragSource="unranked_pool"
                                 onDragStart={onDragStart}

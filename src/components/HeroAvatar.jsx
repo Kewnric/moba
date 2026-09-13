@@ -9,16 +9,14 @@ export const heroName = (heroId) => (HERO_BY_ID[heroId] ? HERO_BY_ID[heroId].nam
 
 const laneLabel = (heroId) => (HERO_BY_ID[heroId] ? HERO_BY_ID[heroId].lanes.join(' / ') : '');
 
-const getHeroImage = (heroId, customImages = {}) =>
-    (customImages && customImages[heroId]) || (HERO_BY_ID[heroId] && HERO_BY_ID[heroId].image) || null;
-
-export default function HeroAvatar({ heroId, size = 'md', className = '', showTooltip = true, quickNote = null, onEditNote = null, customImages = {}, setTooltip }) {
+// Official portrait, with the hero's initials if the image can't load.
+export default function HeroAvatar({ heroId, size = 'md', className = '', showTooltip = true, quickNote = null, onEditNote = null, setTooltip }) {
     const [imgError, setImgError] = useState(false);
     const name = heroName(heroId);
-    const imageSrc = getHeroImage(heroId, customImages);
+    const imageSrc = HERO_BY_ID[heroId] ? HERO_BY_ID[heroId].image : null;
     const showImage = imageSrc && !imgError;
 
-    useEffect(() => { setImgError(false); }, [heroId, imageSrc]);
+    useEffect(() => { setImgError(false); }, [heroId]);
 
     // Only a real mouse hover opens the tooltip. A tap on a touch screen also sends hover events, and the
     // tooltip would stay stuck open after it.
@@ -41,7 +39,7 @@ export default function HeroAvatar({ heroId, size = 'md', className = '', showTo
         <div className={`relative group flex flex-col items-center ${className}`} onPointerEnter={handlePointerEnter} onPointerLeave={handlePointerLeave}>
             <div className={`${SIZE_CLASSES[size]} rounded-xl shadow-lg flex items-center justify-center font-bold text-white overflow-hidden bg-slate-800 border border-white/10 relative transition-all duration-200 group-hover:scale-110 group-hover:shadow-cyan-500/20 group-hover:border-white/30`}>
                 {/* Not draggable itself, so a drag starts from the hero card around it instead of the image file. */}
-                {showImage ? (<img src={imageSrc} alt={name} draggable={false} className="w-full h-full object-cover" onError={() => setImgError(true)} />) : (<span className="z-10">{name.substring(0, 2)}</span>)}
+                {showImage ? (<img src={imageSrc} alt={name} draggable={false} loading="lazy" decoding="async" className="w-full h-full object-cover" onError={() => setImgError(true)} />) : (<span className="z-10">{name.substring(0, 2)}</span>)}
                 {!showImage && <div className="absolute inset-0 bg-gradient-to-br from-slate-700 to-slate-800"></div>}
                 <div className="absolute inset-0 bg-gradient-to-tr from-transparent via-white/10 to-transparent opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none" />
             </div>

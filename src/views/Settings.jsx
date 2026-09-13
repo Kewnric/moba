@@ -1,18 +1,13 @@
-import { useState } from 'react';
-import { HEROES } from '../data/heroes.js';
 import { RATING_SOURCES } from '../data/ratingSources.js';
 import { STATS_INFO } from '../data/stats.js';
-import { filterHeroes } from '../lib/heroFilter.js';
 import { Icons } from '../components/Icons.jsx';
 import { Switch } from '../components/DraftBoard.jsx';
-import HeroAvatar from '../components/HeroAvatar.jsx';
 
 const STATS_RANK = `${STATS_INFO.rank[0].toUpperCase()}${STATS_INFO.rank.slice(1)}`;
 const BAN_COUNTS = [3, 4, 5];
 const SECTIONS = [
     { id: 'settings-draft', label: 'Draft' },
     { id: 'settings-backup', label: 'Backup' },
-    { id: 'settings-icons', label: 'Icons' },
     { id: 'settings-stats', label: 'Stats' },
     { id: 'settings-reset', label: 'Reset' },
 ];
@@ -46,12 +41,7 @@ function SettingRow({ title, description, children }) {
     );
 }
 
-export default function Settings({ preferences, onPreferencesChange, stats, onExport, onImport, onReset, customImages, onUploadIcon, onResetIcon }) {
-    const [iconSearch, setIconSearch] = useState('');
-    const [onlyCustom, setOnlyCustom] = useState(false);
-    const customCount = Object.keys(customImages).length;
-    const iconHeroes = filterHeroes(HEROES, { search: iconSearch }).filter(hero => !onlyCustom || customImages[hero.id]);
-
+export default function Settings({ preferences, onPreferencesChange, stats, onExport, onImport, onReset }) {
     const jumpTo = (id) => document.getElementById(id)?.scrollIntoView({ behavior: 'smooth', block: 'start' });
 
     return (
@@ -94,11 +84,11 @@ export default function Settings({ preferences, onPreferencesChange, stats, onEx
                     <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mt-4">
                         <button type="button" onClick={onExport} className={TILE}>
                             <Icons.Download size={24} className="text-cyan-400 shrink-0" />
-                            <div><div className="text-sm font-bold text-white">Export backup</div><div className="text-[11px] text-gray-400">Ratings, notes, roster, comfort, custom icons and game history as a JSON file.</div></div>
+                            <div><div className="text-sm font-bold text-white">Export backup</div><div className="text-[11px] text-gray-400">Ratings, notes, roster, comfort and game history in one small JSON file.</div></div>
                         </button>
                         <label className={`${TILE} cursor-pointer focus-within:ring-2 focus-within:ring-purple-400`}>
                             <Icons.Upload size={24} className="text-purple-400 shrink-0" />
-                            <div><div className="text-sm font-bold text-white">Restore backup</div><div className="text-[11px] text-gray-400">Preview a backup file, then merge it with your data or replace your data.</div></div>
+                            <div><div className="text-sm font-bold text-white">Restore backup</div><div className="text-[11px] text-gray-400">Choose a JunglerOS .json backup to preview, then merge it with your data or replace your data.</div></div>
                             <input type="file" accept=".json,application/json" className="sr-only" onChange={onImport} />
                         </label>
                     </div>
@@ -106,46 +96,7 @@ export default function Settings({ preferences, onPreferencesChange, stats, onEx
                         <span>Roster <span className="text-white font-mono">{stats.junglerCount}</span></span>
                         <span>Ratings <span className="text-white font-mono">{stats.matchupCount}</span></span>
                         <span>Games <span className="text-white font-mono">{stats.gameCount}</span></span>
-                        <span>Custom icons <span className="text-white font-mono">{stats.imageCount}</span></span>
                     </div>
-                </section>
-
-                <section id="settings-icons" aria-labelledby="settings-icons-title" className={CARD}>
-                    <div className="flex flex-wrap items-start justify-between gap-3">
-                        <div>
-                            <h2 id="settings-icons-title" className={TITLE}><Icons.Image size={16} className="text-orange-400" /> Custom icons</h2>
-                            <p className={INTRO}>Tap a hero to upload your own picture. It's cropped to a square and replaces the official portrait everywhere.</p>
-                        </div>
-                        <span className="text-[11px] text-gray-400 whitespace-nowrap">{customCount} custom</span>
-                    </div>
-                    <div className="flex flex-wrap items-center gap-3 mt-4">
-                        <div className="relative flex-1 min-w-[180px]">
-                            <Icons.Search className="absolute left-3 top-2.5 text-gray-500" size={16} />
-                            <input type="search" aria-label="Search heroes" placeholder="Search heroes..." className="w-full bg-slate-800 rounded-lg pl-10 pr-4 py-2 text-sm text-white focus:outline-none focus:ring-1 focus:ring-orange-500 border border-white/5" value={iconSearch} onChange={(e) => setIconSearch(e.target.value)} />
-                        </div>
-                        <Switch label="Only custom" checked={onlyCustom} onChange={setOnlyCustom} />
-                    </div>
-                    {iconHeroes.length === 0 ? (
-                        <p className="text-xs text-gray-500 mt-4">{onlyCustom ? 'No custom icons yet.' : 'No heroes match.'}</p>
-                    ) : (
-                        <div className="grid grid-cols-3 sm:grid-cols-5 md:grid-cols-6 lg:grid-cols-8 gap-3 mt-4 max-h-[26rem] overflow-y-auto pr-1 scrollbar-hide">
-                            {iconHeroes.map(hero => {
-                                const custom = Boolean(customImages[hero.id]);
-                                return (
-                                    <div key={hero.id} className="flex flex-col items-center gap-1 pt-1.5">
-                                        <label className="relative group cursor-pointer rounded-xl focus-within:ring-2 focus-within:ring-orange-400">
-                                            <HeroAvatar heroId={hero.id} size="lg" showTooltip={false} customImages={customImages} />
-                                            <span className="absolute inset-0 rounded-xl bg-black/60 opacity-0 [@media(hover:hover)]:group-hover:opacity-100 flex items-center justify-center transition-opacity pointer-events-none"><Icons.Upload size={20} className="text-white" /></span>
-                                            {custom && <span className="absolute -top-1.5 -left-1.5 z-10 text-[8px] font-bold uppercase bg-orange-500 text-black rounded px-1">Custom</span>}
-                                            <input type="file" accept="image/*" className="sr-only" aria-label={`Upload an icon for ${hero.name}`} onChange={(e) => onUploadIcon(e, hero.id)} />
-                                        </label>
-                                        <span className="text-[11px] text-gray-400 text-center truncate max-w-full">{hero.name}</span>
-                                        {custom && <button type="button" onClick={() => onResetIcon(hero.id)} className="text-[10px] font-semibold text-orange-300 hover:underline">Reset</button>}
-                                    </div>
-                                );
-                            })}
-                        </div>
-                    )}
                 </section>
 
                 <section id="settings-stats" aria-labelledby="settings-stats-title" className={CARD}>
@@ -156,7 +107,7 @@ export default function Settings({ preferences, onPreferencesChange, stats, onEx
 
                 <section id="settings-reset" aria-labelledby="settings-reset-title" className={`${CARD} border-red-500/30`}>
                     <h2 id="settings-reset-title" className={TITLE}><Icons.Trash2 size={16} className="text-red-400" /> Reset</h2>
-                    <p className={INTRO}>Deletes your ratings, notes, roster, comfort, custom icons, game history and settings from this browser. Export a backup first if you might want them back.</p>
+                    <p className={INTRO}>Deletes your ratings, notes, roster, comfort, game history and settings from this browser. Export a backup first if you might want them back.</p>
                     <button type="button" onClick={onReset} className="mt-4 px-4 py-2 rounded-lg border border-red-500/50 text-red-300 hover:bg-red-500/20 text-xs font-bold uppercase tracking-wide">Reset to factory defaults</button>
                 </section>
             </div>

@@ -2,6 +2,7 @@ import { useEffect, useId, useRef } from 'react';
 import { Icons } from './Icons.jsx';
 
 const CANCEL_BUTTON = 'px-3 py-2 rounded text-xs text-gray-400 hover:text-white';
+const UNMATCHED_NAMES_SHOWN = 8;
 const NON_TEXT_INPUTS = ['button', 'submit', 'reset', 'checkbox', 'radio', 'file', 'range', 'color'];
 const FOCUSABLE = 'button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [href], [tabindex]:not([tabindex="-1"])';
 
@@ -141,12 +142,13 @@ export function AddJunglerModal({ options, value, onChange, onCancel, onAdd }) {
 // Shown after choosing a backup file, before anything changes.
 export function ImportDialog({ summary, onMerge, onReplace, onCancel }) {
     const counts = [
-        [summary.junglers, 'junglers'],
-        [summary.ratings, 'matchup ratings'],
-        [summary.comfort, 'comfort ratings'],
-        [summary.games, 'recorded games'],
-        [summary.icons, 'custom icons'],
+        [summary.junglers, 'jungler'],
+        [summary.ratings, 'matchup rating'],
+        [summary.comfort, 'comfort rating'],
+        [summary.games, 'recorded game'],
     ];
+    const shownNames = summary.unmatched.slice(0, UNMATCHED_NAMES_SHOWN);
+    const hiddenNames = summary.unmatched.length - shownNames.length;
     return (
         <Dialog title="Restore backup" icon={Icons.Upload} titleClass="text-purple-400" borderClass="border-purple-500/30"
             onClose={onCancel} onSubmit={onMerge}
@@ -157,13 +159,16 @@ export function ImportDialog({ summary, onMerge, onReplace, onCancel }) {
             </>}>
             <p className="text-xs text-gray-400 mb-2 break-all">{summary.fileName}</p>
             <ul className="grid grid-cols-2 gap-x-4 gap-y-1 text-xs text-gray-300 mb-3">
-                {counts.map(([count, label]) => <li key={label}><span className="font-mono font-bold text-white">{count}</span> {label}</li>)}
+                {counts.map(([count, label]) => <li key={label}><span className="font-mono font-bold text-white">{count}</span> {label}{count === 1 ? '' : 's'}</li>)}
             </ul>
             {summary.unmatched.length > 0 && (
-                <p className="text-[11px] text-amber-300 mb-3">These names aren't heroes and will be skipped: {summary.unmatched.join(', ')}.</p>
+                <p className="text-[11px] text-amber-300 mb-3">These names aren't heroes and will be skipped: {shownNames.join(', ')}{hiddenNames > 0 ? `, and ${hiddenNames} more` : ''}.</p>
+            )}
+            {summary.skippedIcons > 0 && (
+                <p className="text-[11px] text-gray-400 mb-3">This backup has {summary.skippedIcons} custom icon{summary.skippedIcons === 1 ? '' : 's'} from an older version. JunglerOS now always uses the official portraits, so they're skipped.</p>
             )}
             <p className="text-[11px] text-gray-400"><span className="text-white font-semibold">Merge</span> keeps your data and adds the backup's. Where both rate the same matchup, the backup wins.</p>
-            <p className="text-[11px] text-gray-400 mt-1"><span className="text-red-300 font-semibold">Replace</span> deletes your current ratings, notes, comfort, icons and games first.</p>
+            <p className="text-[11px] text-gray-400 mt-1"><span className="text-red-300 font-semibold">Replace</span> deletes your current ratings, notes, comfort and games first.</p>
         </Dialog>
     );
 }

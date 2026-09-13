@@ -1,21 +1,24 @@
 import { HEROES, HERO_BY_ID, LANES } from '../data/heroes.js';
 import { isComfortRating } from './dataReducer.js';
 import { findHeroId } from './heroIds.js';
-import { isGameRecord, isHistory } from './history.js';
+import { isGameRecord, isHistory, mergeHistory } from './history.js';
 import { isPlainObject, isStringArray } from './storage.js';
 
 // Saved data, version 2: { version, junglers: [heroId], matchups: { junglerId: { enemyId: entry } },
 // comfort?: { junglerId: 1-5 }, knownDefaults?: [heroId] } where an entry holds any of
-// { tier, quickNote, comment }. Custom icons and game history are saved under their own keys.
+// { tier, quickNote, comment }. Game history and draft preferences are saved under their own keys.
 
 export const SAVE_VERSION = 2;
 
 export const STORAGE_KEYS = {
   data: 'jungleros_data_v2',
-  images: 'jungleros_images_v2',
   history: 'jungleros_history_v1',
   preferences: 'jungleros_preferences_v1',
-  // Name-based saves from before hero ids. They're left in place after upgrading, as a fallback.
+  // Custom icons saved by older versions. JunglerOS now always shows the official portraits, so this is
+  // deleted on load to free the space.
+  obsoleteImages: 'jungleros_images_v2',
+  // Name-based saves from before hero ids. Ratings and roster are left in place after upgrading, as a
+  // fallback; their custom icons are deleted on load like the newer ones.
   legacyMatchups: 'moba_matchup_data_v1',
   legacyJunglers: 'moba_jungler_list_v1',
   legacyImages: 'moba_custom_images_v1',
@@ -62,9 +65,9 @@ export function addNewDefaultJunglers(data) {
   };
 }
 
-// Rebuilds roster, matchups, comfort and icons with every hero key passed through toId. Keys that
-// aren't heroes are left out and listed in `unmatched`. A missing roster falls back to the defaults.
-function convertKeys({ junglers, matchups, comfort, knownDefaults, images }, toId) {
+// Rebuilds roster, matchups and comfort with every hero key passed through toId. Keys that aren't heroes
+// are left out and listed in `unmatched`. A missing roster falls back to the defaults.
+function convertKeys({ junglers, matchups, comfort, knownDefaults }, toId) {
   const unmatched = [];
   const idFor = (key) => {
     const id = toId(key);
@@ -94,25 +97,21 @@ function convertKeys({ junglers, matchups, comfort, knownDefaults, images }, toI
     if (heroId && isComfortRating(rating)) comfortById[heroId] = rating;
   });
 
-  const imagesById = {};
-  Object.entries(isPlainObject(images) ? images : {}).forEach(([heroKey, image]) => {
-    const heroId = idFor(heroKey);
-    if (heroId && typeof image === 'string') imagesById[heroId] = image;
-  });
-
   const data = { version: SAVE_VERSION, junglers: junglerIds, matchups: matchupsById };
   if (Object.keys(comfortById).length) data.comfort = comfortById;
   // Bookkeeping only, so heroes that no longer exist are dropped without being reported.
   if (Array.isArray(knownDefaults)) data.knownDefaults = [...new Set(knownDefaults.map(toId).filter(Boolean))];
-  return { data, images: imagesById, unmatched };
+  return { data, unmatched };
 }
 
-export const migrateV1 = ({ matchupData, junglerList, customImages } = {}) =>
-  convertKeys({ junglers: junglerList, matchups: matchupData, images: customImages }, findHeroId);
+export const migrateV1 = ({ matchupData, junglerList } = {}) =>
+  convertKeys({ junglers: junglerList, matchups: matchupData }, findHeroId);
 
 const knownHeroId = (id) => (HERO_BY_ID[id] ? id : null);
 
-export const buildExport = (data, images, history = []) => ({
+const countIcons = (images) => (isPlainObject(images) ? Object.keys(images).length : 0);
+
+export const buildExport = (data, history = []) => ({
   app: 'JunglerOS',
   version: SAVE_VERSION,
   exportedAt: new Date().toISOString(),
@@ -120,21 +119,23 @@ export const buildExport = (data, images, history = []) => ({
   matchups: data.matchups,
   comfort: data.comfort || {},
   ...(data.knownDefaults ? { knownDefaults: data.knownDefaults } : {}),
-  images,
   history,
 });
 
-// Turns a backup file (current format or the old name-based one) into saved data, icons and games.
+// Turns a backup file (current format or the old name-based one) into saved data and games. Custom icons
+// from older backups are skipped and counted in `skippedIcons`.
 export function normalizeImport(file) {
   if (isPlainObject(file) && file.app === 'JunglerOS' && file.version === SAVE_VERSION) {
     const converted = convertKeys(
-      { junglers: file.junglers, matchups: file.matchups, comfort: file.comfort, knownDefaults: file.knownDefaults, images: file.images },
+      { junglers: file.junglers, matchups: file.matchups, comfort: file.comfort, knownDefaults: file.knownDefaults },
       knownHeroId,
     );
-    return { ...converted, history: Array.isArray(file.history) ? file.history.filter(isGameRecord) : [] };
+    // Newest first, keeping the same number of games the app keeps.
+    const history = Array.isArray(file.history) ? mergeHistory([], file.history.filter(isGameRecord)) : [];
+    return { ...converted, history, skippedIcons: countIcons(file.images) };
   }
   if (isPlainObject(file) && (file.matchupData || file.junglerList)) {
-    return { ...migrateV1(file), history: [] };
+    return { ...migrateV1(file), history: [], skippedIcons: countIcons(file.customImages) };
   }
   throw new Error('This file is not a JunglerOS backup.');
 }
@@ -161,27 +162,26 @@ export function mergeSaveData(current, imported) {
   return data;
 }
 
-// Reads saved data, icons and games. Upgrades an old name-based save the first time this version runs,
-// and adds default junglers released since the save was made.
+// Reads saved data and games. Upgrades an old name-based save the first time this version runs, adds
+// default junglers released since the save was made, and deletes custom icons from older versions.
 export function loadSave(storage) {
+  storage.remove(STORAGE_KEYS.obsoleteImages);
+  storage.remove(STORAGE_KEYS.legacyImages);
   const history = storage.read(STORAGE_KEYS.history, [], isHistory);
   const saved = storage.read(STORAGE_KEYS.data, null, isSaveData);
   let loaded;
 
   if (saved) {
-    loaded = { data: saved, images: storage.read(STORAGE_KEYS.images, {}, isPlainObject), unmatched: [], migrated: false };
+    loaded = { data: saved, unmatched: [], migrated: false };
   } else {
     const legacy = {
       matchupData: storage.read(STORAGE_KEYS.legacyMatchups, null, isPlainObject),
       junglerList: storage.read(STORAGE_KEYS.legacyJunglers, null, isStringArray),
-      customImages: storage.read(STORAGE_KEYS.legacyImages, null, isPlainObject),
     };
-    if (!legacy.matchupData && !legacy.junglerList && !legacy.customImages) {
-      return { data: emptyData(), images: {}, history, unmatched: [], migrated: false, addedJunglers: [] };
+    if (!legacy.matchupData && !legacy.junglerList) {
+      return { data: emptyData(), history, unmatched: [], migrated: false, addedJunglers: [] };
     }
-    const upgraded = migrateV1(legacy);
-    storage.write(STORAGE_KEYS.images, upgraded.images);
-    loaded = { ...upgraded, migrated: true };
+    loaded = { ...migrateV1(legacy), migrated: true };
   }
 
   const { data, added } = addNewDefaultJunglers(loaded.data);

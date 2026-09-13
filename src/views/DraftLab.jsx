@@ -24,7 +24,7 @@ const isHeroDrag = (e) => Array.from(e.dataTransfer.types).includes(HERO_TYPE);
 // Phones: the board stays pinned at the top while the recommendation and hero picker scroll under it.
 // Desktop: the hero picker is a left column beside the board and recommendation. Heroes can be tapped
 // into the highlighted slot or dragged onto any slot; dragging a slot onto the picker removes it.
-export default function DraftLab({ draftState, enemyLanes, defaultBanCount, allyJunglers, ratingSource, setRatingSource, scoring, onlyPool, setOnlyPool, hasPool, customImages, setTooltip, onOpenDatabase, resultRecorder }) {
+export default function DraftLab({ draftState, enemyLanes, defaultBanCount, allyJunglers, ratingSource, setRatingSource, scoring, onlyPool, setOnlyPool, hasPool, setTooltip, onOpenDatabase, resultRecorder }) {
     const { draft, activeSlot } = draftState;
     const [laneFilter, setLaneFilter] = useState('All');
     const [search, setSearch] = useState('');
@@ -115,11 +115,11 @@ export default function DraftLab({ draftState, enemyLanes, defaultBanCount, ally
         <div className="flex-1 min-w-0 min-h-0 overflow-y-auto lg:overflow-hidden lg:grid lg:grid-cols-[380px_minmax(0,1fr)] lg:grid-rows-[auto_minmax(0,1fr)]">
             {/* Pinned only on screens tall enough to still show the picker below it (portrait phones and tablets). */}
             <div className="[@media(max-width:1023px)_and_(min-height:640px)]:sticky top-0 z-20 bg-[#0f172a]/95 backdrop-blur border-b border-white/10 lg:col-start-2 lg:row-start-1 lg:bg-transparent lg:backdrop-blur-none lg:border-b-0">
-                <DraftBoard draftState={draftState} enemyLanes={enemyLanes} drag={drag} defaultBanCount={defaultBanCount} customImages={customImages} />
+                <DraftBoard draftState={draftState} enemyLanes={enemyLanes} drag={drag} defaultBanCount={defaultBanCount} />
             </div>
 
             <div className="p-3 lg:px-8 lg:pt-2 lg:pb-8 lg:col-start-2 lg:row-start-2 lg:min-h-0 lg:overflow-y-auto scrollbar-hide">
-                <Recommendation scoring={scoring} ratingSource={ratingSource} setRatingSource={setRatingSource} allyJunglers={allyJunglers} onlyPool={onlyPool} setOnlyPool={setOnlyPool} hasPool={hasPool} customImages={customImages} onOpenDatabase={onOpenDatabase} />
+                <Recommendation scoring={scoring} ratingSource={ratingSource} setRatingSource={setRatingSource} allyJunglers={allyJunglers} onlyPool={onlyPool} setOnlyPool={setOnlyPool} hasPool={hasPool} onOpenDatabase={onOpenDatabase} />
                 <ResultRecorder draft={draft} {...resultRecorder} />
             </div>
 
@@ -145,7 +145,7 @@ export default function DraftLab({ draftState, enemyLanes, defaultBanCount, ally
                     </div>
                 </div>
                 <div className="lg:flex-1 lg:min-h-0 lg:overflow-y-auto scrollbar-hide">
-                    <HeroPool heroes={heroes} unavailable={unavailable} onHeroClick={activeSlot ? pick : null} customImages={customImages} setTooltip={setTooltip}
+                    <HeroPool heroes={heroes} unavailable={unavailable} onHeroClick={activeSlot ? pick : null} setTooltip={setTooltip}
                         dragSource={FROM_PICKER} onDragStart={(e, heroId) => startDrag(e, FROM_PICKER, heroId)} onDragEnd={endDrag} />
                 </div>
             </aside>

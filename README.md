@@ -84,6 +84,7 @@ Needs Node 22 or newer.
 | `src/lib/draft.js` | Draft board: picks, bans, pick order and enemy lanes |
 | `src/lib/dataReducer.js` | Every change to your roster, ratings, notes and comfort |
 | `src/lib/saveData.js` | Saved-data format, upgrades from older saves, backup import and export |
+| `src/lib/backupFile.js` | Backup file names, compact writing, and size and type checks before reading |
 | `src/lib/stats.js` | Reads the matchup and win-rate snapshot |
 | `src/lib/storage.js` | Browser saving that falls back safely when data is unreadable |
 | `src/data/heroes.js` | All 133 heroes: id, lanes, official roles and specialities, portrait |
@@ -93,7 +94,9 @@ Needs Node 22 or newer.
 
 ## Your saved data
 
-Your roster, ratings, notes, comfort ratings, custom icons and game history are saved in the browser you use JunglerOS in. The Settings tab exports them to a backup file and restores backups from any version of the app. Before a restore changes anything, it shows what the file contains and lets you **Merge** it into your data (the backup wins where both rate the same matchup) or **Replace** your data.
+Your roster, ratings, notes, comfort ratings and game history are saved in the browser you use JunglerOS in. The Settings tab exports them to a compact JSON backup named with the date and time (a fully rated roster with 500 games is about 1.5 MB). It restores backups from any version of the app. Before reading a file, it checks that the file is a `.json` under 5 MB. Before a restore changes anything, it shows what the file contains and lets you **Merge** it into your data (the backup wins where both rate the same matchup) or **Replace** your data. A restore keeps the newest 500 games.
+
+Heroes always show their official portraits. Custom icons from older versions are deleted from the browser, and skipped when an older backup is restored.
 
 Saves are keyed by hero id, not display name. The first time this version opens, it upgrades an older name-based save automatically, leaves the old copy in place, and lists any names that didn't match a hero. When a new default jungler is added to JunglerOS, it's added to your roster once; junglers you removed stay removed.
 

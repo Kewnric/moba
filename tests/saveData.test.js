@@ -24,7 +24,7 @@ test('DEFAULT_JUNGLERS lists every hero in the Jungling lane', () => {
 });
 
 test('migrateV1 converts hero names to ids', () => {
-  const { data, images, unmatched } = migrateV1({
+  const { data, unmatched } = migrateV1({
     junglerList: ['Ling', 'Yi Sun-Shin'],
     matchupData: {
       Ling: { Tigreal: { tier: 'A', quickNote: 'Kite' } },
@@ -37,7 +37,6 @@ test('migrateV1 converts hero names to ids', () => {
     junglers: ['ling', 'yi-sun-shin'],
     matchups: { ling: { tigreal: { tier: 'A', quickNote: 'Kite' } }, 'yi-sun-shin': { 'chang-e': { tier: 'S' } } },
   });
-  assert.deepEqual(images, { ling: 'data:image/jpeg;base64,AAA' });
   assert.deepEqual(unmatched, []);
 });
 
@@ -66,11 +65,20 @@ test('buildExport labels the file with the app name and version', () => {
 
 test('normalizeImport reads a version 2 export', () => {
   const saved = { version: 2, junglers: ['ling'], matchups: { ling: { tigreal: { tier: 'S' } } } };
-  const file = JSON.parse(JSON.stringify(buildExport(saved, { ling: 'data:x' })));
-  const { data, images, unmatched } = normalizeImport(file);
-  assert.deepEqual(data, saved);
-  assert.deepEqual(images, { ling: 'data:x' });
-  assert.deepEqual(unmatched, []);
+  const file = JSON.parse(JSON.stringify(buildExport(saved, [])));
+  const imported = normalizeImport(file);
+  assert.deepEqual(imported.data, saved);
+  assert.deepEqual(imported.unmatched, []);
+  assert.equal(imported.skippedIcons, 0);
+  assert.equal('images' in file, false);
+});
+
+test('normalizeImport skips custom icons from older backups and counts them', () => {
+  const file = { app: 'JunglerOS', version: 2, junglers: ['ling'], matchups: {}, images: { ling: 'data:image/jpeg;base64,AAA', fanny: 'data:image/jpeg;base64,BBB' } };
+  const imported = normalizeImport(file);
+  assert.equal(imported.skippedIcons, 2);
+  assert.equal('images' in imported, false);
+  assert.equal(normalizeImport({ junglerList: ['Ling'], customImages: { Ling: 'data:x' } }).skippedIcons, 1);
 });
 
 test('normalizeImport drops unknown hero ids from a version 2 file', () => {
@@ -101,7 +109,7 @@ test('loadSave returns defaults when nothing is saved', () => {
   const { store } = storageWith({});
   const result = loadSave(store);
   assert.deepEqual(result.data, { version: 2, junglers: DEFAULT_JUNGLERS, matchups: {}, knownDefaults: DEFAULT_JUNGLERS });
-  assert.deepEqual(result.images, {});
+  assert.equal('images' in result, false);
   assert.deepEqual(result.history, []);
   assert.equal(result.migrated, false);
   assert.deepEqual(result.unmatched, []);
@@ -115,6 +123,17 @@ test('loadSave adds newly released junglers to a saved roster and saves the resu
   assert.deepEqual(result.data.junglers, ['fanny', 'hirara']);
   assert.deepEqual(JSON.parse(raw.getItem(STORAGE_KEYS.data)), result.data);
   assert.deepEqual(loadSave(store).addedJunglers, []);
+});
+
+test('loadSave deletes custom icons saved by older versions', () => {
+  const { raw, store } = storageWith({
+    [STORAGE_KEYS.data]: JSON.stringify({ version: 2, junglers: ['fanny'], matchups: {}, knownDefaults: DEFAULT_JUNGLERS }),
+    jungleros_images_v2: JSON.stringify({ fanny: 'data:image/jpeg;base64,AAA' }),
+    moba_custom_images_v1: JSON.stringify({ Fanny: 'data:image/jpeg;base64,AAA' }),
+  });
+  loadSave(store);
+  assert.equal(raw.getItem('jungleros_images_v2'), null);
+  assert.equal(raw.getItem('moba_custom_images_v1'), null);
 });
 
 test('loadSave reads saved game history', () => {
@@ -134,9 +153,9 @@ test('loadSave upgrades an old save once and keeps the old keys', () => {
   assert.deepEqual(result.data.junglers, ['ling', 'hirara']);
   assert.deepEqual(result.addedJunglers, ['hirara']);
   assert.deepEqual(result.data.matchups, { ling: { tigreal: { tier: 'A' } } });
-  assert.deepEqual(result.images, { ling: 'data:x' });
+  assert.equal('images' in result, false);
   assert.deepEqual(JSON.parse(raw.getItem(STORAGE_KEYS.data)), result.data);
-  assert.deepEqual(JSON.parse(raw.getItem(STORAGE_KEYS.images)), { ling: 'data:x' });
+  assert.equal(raw.getItem('jungleros_images_v2'), null);
   assert.notEqual(raw.getItem(STORAGE_KEYS.legacyMatchups), null);
   assert.equal(loadSave(store).migrated, false);
 });

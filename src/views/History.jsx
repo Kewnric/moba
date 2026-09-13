@@ -25,7 +25,7 @@ function TierBadge({ tier }) {
     return <span title={TIER_LABELS[tier]} className={`inline-block text-[10px] font-bold px-1.5 rounded text-white ${TIER_COLORS[tier]}`}>{tier}</span>;
 }
 
-export default function History({ history, ratings, customImages, onDeleteGame, onSetTier, onOpenDraft }) {
+export default function History({ history, ratings, onDeleteGame, onSetTier, onOpenDraft }) {
     const summary = useMemo(() => summarizeHistory(history), [history]);
     const review = useMemo(() => reviewRatings(history, ratings, { minGames: REVIEW_MIN_GAMES }), [history, ratings]);
     const [showAll, setShowAll] = useState(false);
@@ -60,7 +60,7 @@ export default function History({ history, ratings, customImages, onDeleteGame, 
                         <ul className="space-y-2">
                             {summary.byJungler.map(entry => (
                                 <li key={entry.id} className="grid grid-cols-[2rem_minmax(0,1fr)_auto] items-center gap-3">
-                                    <div className="w-8 h-8"><HeroAvatar heroId={entry.id} size="fill" className="w-full h-full" showTooltip={false} customImages={customImages} /></div>
+                                    <div className="w-8 h-8"><HeroAvatar heroId={entry.id} size="fill" className="w-full h-full" showTooltip={false} /></div>
                                     <div className="min-w-0">
                                         <div className="flex items-center justify-between gap-2 text-xs">
                                             <span className="font-semibold text-white truncate">{heroName(entry.id)}</span>
@@ -111,7 +111,7 @@ export default function History({ history, ratings, customImages, onDeleteGame, 
                             return (
                                 <li key={game.id} className="flex items-center gap-3 rounded-lg bg-slate-800/40 border border-white/5 px-3 py-2">
                                     <span className={`w-11 shrink-0 text-center text-[10px] font-bold uppercase rounded px-1 py-0.5 ${won ? 'bg-emerald-500/20 text-emerald-300' : 'bg-red-500/20 text-red-300'}`}>{won ? 'Win' : 'Loss'}</span>
-                                    <div className="w-9 h-9 shrink-0"><HeroAvatar heroId={game.playedId} size="fill" className="w-full h-full" showTooltip={false} customImages={customImages} /></div>
+                                    <div className="w-9 h-9 shrink-0"><HeroAvatar heroId={game.playedId} size="fill" className="w-full h-full" showTooltip={false} /></div>
                                     <div className="min-w-0 flex-1">
                                         <div className="flex items-center gap-1.5 text-sm font-semibold text-white">
                                             <span className="truncate">{heroName(game.playedId)}</span>
@@ -120,7 +120,7 @@ export default function History({ history, ratings, customImages, onDeleteGame, 
                                         <div className="text-[10px] text-gray-500 truncate">{formatDate(game.playedAt)}{enemyIds.length ? ` · vs ${enemyIds.map(heroName).join(', ')}` : ''}</div>
                                     </div>
                                     <div className="hidden sm:flex -space-x-1.5">
-                                        {enemyIds.map(id => <div key={id} className="w-6 h-6 rounded-md ring-1 ring-slate-900 overflow-hidden"><HeroAvatar heroId={id} size="fill" className="w-full h-full" showTooltip={false} customImages={customImages} /></div>)}
+                                        {enemyIds.map(id => <div key={id} className="w-6 h-6 rounded-md ring-1 ring-slate-900 overflow-hidden"><HeroAvatar heroId={id} size="fill" className="w-full h-full" showTooltip={false} /></div>)}
                                     </div>
                                     <button type="button" aria-label={`Delete the ${won ? 'win' : 'loss'} with ${heroName(game.playedId)} from ${formatDate(game.playedAt)}`}
                                         onClick={() => onDeleteGame(game)}

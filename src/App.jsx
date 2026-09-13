@@ -4,20 +4,19 @@ import { HERO_META } from './data/stats.js';
 import { DEFAULT_DRAFT_PREFERENCES, findAllyJunglers, isDraftPreferences, normalizeDraftPreferences, resolveEnemyLanes } from './lib/draft.js';
 import { dataReducer } from './lib/dataReducer.js';
 import { addGame, createGameRecord, mergeHistory, removeGame } from './lib/history.js';
+import { backupFileName, readBackupFile, serializeBackup } from './lib/backupFile.js';
 import {
     STORAGE_KEYS,
     addNewDefaultJunglers,
-    buildExport,
     clearSave,
     countRatings,
     loadSave,
     mergeSaveData,
-    normalizeImport,
 } from './lib/saveData.js';
 import { scoreJunglers } from './lib/scoring.js';
 import { MATCHUPS, SYNERGY } from './lib/stats.js';
 import { createSafeStorage } from './lib/storage.js';
-import { compressImage, downloadJson } from './lib/files.js';
+import { downloadFile } from './lib/files.js';
 import { useDraft } from './hooks/useDraft.js';
 import { Icons } from './components/Icons.jsx';
 import GlobalTooltip from './components/GlobalTooltip.jsx';
@@ -35,10 +34,19 @@ const NAV_TABS = [
     { id: 'settings', label: 'Settings', icon: Icons.Sliders, activeClass: 'bg-emerald-600' },
 ];
 
-const WRITE_FAILED = "Your last change couldn't be saved because browser storage is full or blocked. Export a backup from Data Hub before closing this tab.";
+const WRITE_FAILED = "Your last change couldn't be saved because browser storage is full or blocked. Export a backup from Settings before closing this tab.";
+const NAMES_LISTED = 8;
 
 const heroInfo = (heroId) => HERO_BY_ID[heroId] || null;
 const lanesOf = (heroId) => (HERO_BY_ID[heroId] ? HERO_BY_ID[heroId].lanes : []);
+
+const countOf = (count, noun) => `${count} ${noun}${count === 1 ? '' : 's'}`;
+
+// A short list for notices, so a backup full of unknown names doesn't flood the screen.
+const listNames = (names) => {
+    const hidden = names.length - NAMES_LISTED;
+    return `${names.slice(0, NAMES_LISTED).join(', ')}${hidden > 0 ? `, and ${hidden} more` : ''}`;
+};
 
 // Loads the save once at startup, collecting storage problems instead of reporting them mid-render.
 const readStartupSave = () => {
@@ -50,7 +58,7 @@ const readStartupSave = () => {
 const startupNotice = ({ problems, unmatched, addedJunglers }) => {
     if (problems.length) return "Saved data couldn't be loaded, so defaults are showing. Nothing was deleted.";
     const notes = [];
-    if (unmatched.length) notes.push(`Your saved data was upgraded. These names didn't match a hero and were left out: ${unmatched.join(', ')}.`);
+    if (unmatched.length) notes.push(`Your saved data was upgraded. These names didn't match a hero and were left out: ${listNames(unmatched)}.`);
     if (addedJunglers.length) notes.push(`New jungler${addedJunglers.length === 1 ? '' : 's'} added to your roster: ${addedJunglers.map(heroName).join(', ')}.`);
     return notes.join(' ') || null;
 };
@@ -58,7 +66,6 @@ const startupNotice = ({ problems, unmatched, addedJunglers }) => {
 export default function App() {
     const [startup] = useState(readStartupSave);
     const [data, dispatch] = useReducer(dataReducer, startup.data);
-    const [customImages, setCustomImages] = useState(startup.images);
     const [history, setHistory] = useState(startup.history);
     const [notice, setNotice] = useState(() => startupNotice(startup));
     const [draftPreferences, setDraftPreferences] = useState(() => normalizeDraftPreferences(
@@ -86,7 +93,6 @@ export default function App() {
 
     // Save after every change. The startup state is already what's stored, so it isn't written back.
     useEffect(() => { if (data !== startup.data) storage.write(STORAGE_KEYS.data, data); }, [data, startup, storage]);
-    useEffect(() => { if (customImages !== startup.images) storage.write(STORAGE_KEYS.images, customImages); }, [customImages, startup, storage]);
     useEffect(() => { if (history !== startup.history) storage.write(STORAGE_KEYS.history, history); }, [history, startup, storage]);
     useEffect(() => { storage.write(STORAGE_KEYS.preferences, draftPreferences); }, [draftPreferences, storage]);
 
@@ -111,36 +117,26 @@ export default function App() {
         });
     };
 
-    const handleIconUpload = (e, heroId) => {
-        const file = e.target.files[0];
-        // Clear the input so choosing the same file again still triggers an upload.
-        e.target.value = '';
-        if (file) compressImage(file, (base64) => setCustomImages(images => ({ ...images, [heroId]: base64 })));
-    };
-
-    const resetIcon = (heroId) => setCustomImages(images => {
-        const { [heroId]: _removed, ...rest } = images;
-        return rest;
-    });
-
     const handleExport = () => {
-        downloadJson(buildExport(data, customImages, history), `jungleros_full_backup_${new Date().toISOString().slice(0, 10)}.json`);
+        try {
+            downloadFile(serializeBackup(data, history), backupFileName());
+        } catch (error) {
+            console.warn('JunglerOS could not export a backup', error);
+            setNotice("The backup couldn't be created. Try again, or use another browser.");
+        }
     };
 
     // Reading a backup only opens a preview; nothing changes until you choose Merge or Replace.
-    const handleImport = (e) => {
+    const handleImport = async (e) => {
         const file = e.target.files[0];
+        // Cleared right away so choosing the same file again still works.
+        e.target.value = '';
         if (!file) return;
-        const reader = new FileReader();
-        reader.onload = (ev) => {
-            try {
-                setPendingImport({ ...normalizeImport(JSON.parse(ev.target.result)), fileName: file.name });
-            } catch (error) {
-                setNotice(error instanceof SyntaxError ? "That file isn't valid JSON, so nothing was restored." : `${error.message} Nothing was restored.`);
-            }
-        };
-        reader.readAsText(file);
-        e.target.value = null;
+        try {
+            setPendingImport(await readBackupFile(file));
+        } catch (error) {
+            setNotice(error.message);
+        }
     };
 
     const applyImport = (mode) => {
@@ -148,18 +144,17 @@ export default function App() {
         const merging = mode === 'merge';
         const nextData = addNewDefaultJunglers(merging ? mergeSaveData(data, incoming.data) : incoming.data).data;
         dispatch({ type: 'load', data: nextData });
-        setCustomImages(merging ? { ...customImages, ...incoming.images } : incoming.images);
         setHistory(merging ? mergeHistory(history, incoming.history) : incoming.history);
         setEditorJungler(null);
         setPendingImport(null);
-        const skipped = incoming.unmatched.length ? ` Skipped names that aren't heroes: ${incoming.unmatched.join(', ')}.` : '';
-        setNotice(`${merging ? 'Merged' : 'Restored'} ${incoming.data.junglers.length} junglers, ${countRatings(incoming.data.matchups)} ratings, ${incoming.history.length} games and ${Object.keys(incoming.images).length} icons from ${incoming.fileName}.${skipped}`);
+        const skipped = incoming.unmatched.length ? ` Skipped names that aren't heroes: ${listNames(incoming.unmatched)}.` : '';
+        setNotice(`${merging ? 'Merged' : 'Restored'} ${countOf(incoming.data.junglers.length, 'jungler')}, ${countOf(countRatings(incoming.data.matchups), 'rating')} and ${countOf(incoming.history.length, 'game')} from ${incoming.fileName}.${skipped}`);
     };
 
     const handleReset = () => {
         setConfirmRequest({
             title: 'Reset JunglerOS?',
-            message: "This deletes your ratings, notes, roster, comfort, custom icons, game history and settings from this browser. It can't be undone.",
+            message: "This deletes your ratings, notes, roster, comfort, game history and settings from this browser. It can't be undone.",
             confirmLabel: 'Reset everything',
             onConfirm: () => {
                 clearSave(storage);
@@ -237,10 +232,9 @@ export default function App() {
 
     const stats = useMemo(() => ({
         junglerCount: data.junglers.length,
-        imageCount: Object.keys(customImages).length,
         matchupCount: countRatings(data.matchups),
         gameCount: history.length,
-    }), [data, customImages, history]);
+    }), [data, history]);
 
     const addJunglerOptions = useMemo(
         () => HEROES.filter(hero => !data.junglers.includes(hero.id)).map(hero => ({ id: hero.id, name: hero.name })),
@@ -286,7 +280,6 @@ export default function App() {
                         onlyPool={onlyPool}
                         setOnlyPool={setOnlyPool}
                         hasPool={hasPool}
-                        customImages={customImages}
                         setTooltip={setTooltipState}
                         onOpenDatabase={() => setView('editor')}
                         resultRecorder={{ junglerIds: data.junglers, lastRecord, onRecord: recordResult, onUndoRecord: undoRecord, onNewDraft: draftState.newDraft }}
@@ -304,7 +297,6 @@ export default function App() {
                         onDeleteJungler={handleDeleteJungler}
                         onEditQuickNote={(enemyId, text) => setEditingNote({ field: 'quickNote', enemyId, text })}
                         onEditComment={(enemyId, text) => setEditingNote({ field: 'comment', enemyId, text })}
-                        customImages={customImages}
                         setTooltip={setTooltipState}
                         draggingSource={draggingSource}
                         onDragStart={handleDragStart}
@@ -315,7 +307,6 @@ export default function App() {
                     <History
                         history={history}
                         ratings={data.matchups}
-                        customImages={customImages}
                         onDeleteGame={requestDeleteGame}
                         onSetTier={(junglerId, enemyId, tier) => dispatch({ type: 'setTier', junglerId, enemyId, tier })}
                         onOpenDraft={() => setView('draft')}
@@ -329,9 +320,6 @@ export default function App() {
                         onExport={handleExport}
                         onImport={handleImport}
                         onReset={handleReset}
-                        customImages={customImages}
-                        onUploadIcon={handleIconUpload}
-                        onResetIcon={resetIcon}
                     />
                 )}
             </main>
@@ -353,7 +341,7 @@ export default function App() {
                         ratings: countRatings(pendingImport.data.matchups),
                         comfort: Object.keys(pendingImport.data.comfort || {}).length,
                         games: pendingImport.history.length,
-                        icons: Object.keys(pendingImport.images).length,
+                        skippedIcons: pendingImport.skippedIcons,
                         unmatched: pendingImport.unmatched,
                     }}
                     onMerge={() => applyImport('merge')}

@@ -28,7 +28,7 @@ test('isSaveData rejects comfort ratings outside 1 to 5', () => {
 });
 
 test('buildExport includes comfort ratings', () => {
-  assert.deepEqual(buildExport(savedState(), {}).comfort, { ling: 5 });
+  assert.deepEqual(buildExport(savedState(), []).comfort, { ling: 5 });
 });
 
 test('normalizeImport keeps comfort ratings for known heroes', () => {

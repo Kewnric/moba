@@ -47,10 +47,25 @@ test('isSaveData accepts a list of known default junglers and rejects a broken o
 test('backups keep known default junglers and game history', () => {
   const saved = { version: 2, junglers: ['ling'], matchups: {}, knownDefaults: ['ling', 'nobody'] };
   const game = { id: 'g1', playedAt: '2026-09-13T10:00:00.000Z', result: 'win', playedId: 'ling', topPickId: null, draft: { ally: ['ling'], enemy: ['tigreal'] } };
-  const file = JSON.parse(JSON.stringify(buildExport(saved, {}, [game, { broken: true }])));
+  const file = JSON.parse(JSON.stringify(buildExport(saved, [game, { broken: true }])));
   const { data, history } = normalizeImport(file);
   assert.deepEqual(data.knownDefaults, ['ling']);
   assert.deepEqual(history, [game]);
+});
+
+test('normalizeImport keeps at most 500 games, newest first', () => {
+  const games = Array.from({ length: 501 }, (_, i) => ({
+    id: `g${i}`,
+    playedAt: new Date(Date.UTC(2026, 0, 1) + i * 60000).toISOString(),
+    result: 'win',
+    playedId: 'ling',
+    topPickId: null,
+    draft: { ally: ['ling'], enemy: [] },
+  }));
+  const { history } = normalizeImport({ app: 'JunglerOS', version: 2, junglers: ['ling'], matchups: {}, history: games });
+  assert.equal(history.length, 500);
+  assert.equal(history[0].id, 'g500');
+  assert.equal(history[499].id, 'g1');
 });
 
 test('normalizeImport of an old name-based backup has no game history', () => {
