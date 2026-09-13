@@ -12,13 +12,13 @@ export default function DataHub({ stats, onExport, onImport, onReset }) {
                     <div className="bg-slate-800/50 p-5 lg:p-6 rounded-xl border border-white/5 flex flex-col items-center text-center hover:bg-slate-800 transition-all">
                         <div className="mb-3 lg:mb-4 text-cyan-400"><Icons.Download size={36} /></div>
                         <h3 className="text-lg font-bold text-white mb-2">Backup Database</h3>
-                        <p className="text-xs text-gray-500 mb-5 lg:mb-6">Perfectly backup everything (Matchups, Roster, and Assets) to a local JSON file.</p>
+                        <p className="text-xs text-gray-500 mb-5 lg:mb-6">Save your ratings, notes, roster, comfort ratings, custom icons and game history to a JSON file.</p>
                         <button onClick={onExport} className="w-full py-3 rounded-lg bg-cyan-600 hover:bg-cyan-500 text-white font-bold text-sm shadow-lg transition-all">Export Full Data</button>
                     </div>
                     <div className="bg-slate-800/50 p-5 lg:p-6 rounded-xl border border-white/5 flex flex-col items-center text-center hover:bg-slate-800 transition-all">
                         <div className="mb-3 lg:mb-4 text-purple-400"><Icons.Upload size={36} /></div>
                         <h3 className="text-lg font-bold text-white mb-2">Restore Database</h3>
-                        <p className="text-xs text-gray-500 mb-5 lg:mb-6">Load a previously saved JSON file. Warning: Overwrites current data.</p>
+                        <p className="text-xs text-gray-500 mb-5 lg:mb-6">Load a backup file. You'll see what's in it and choose to merge it with your data or replace your data.</p>
                         <label className="w-full py-3 rounded-lg bg-purple-600 hover:bg-purple-500 text-white font-bold text-sm shadow-lg transition-all cursor-pointer flex items-center justify-center"><span>Select File</span><input type="file" accept=".json" className="sr-only" onChange={onImport} /></label>
                     </div>
                 </div>
@@ -32,6 +32,7 @@ export default function DataHub({ stats, onExport, onImport, onReset }) {
                         <span>Matchups: <span className="text-white">{stats.matchupCount}</span></span>
                         <span>Roster: <span className="text-white">{stats.junglerCount}</span></span>
                         <span>Assets: <span className="text-white">{stats.imageCount}</span></span>
+                        <span>Games: <span className="text-white">{stats.gameCount}</span></span>
                     </div>
                     <button onClick={onReset} className="text-red-400 hover:text-red-300 underline">Reset to Factory Defaults</button>
                 </div>

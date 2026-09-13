@@ -100,10 +100,27 @@ test('normalizeImport rejects files that are not JunglerOS backups', () => {
 test('loadSave returns defaults when nothing is saved', () => {
   const { store } = storageWith({});
   const result = loadSave(store);
-  assert.deepEqual(result.data, { version: 2, junglers: DEFAULT_JUNGLERS, matchups: {} });
+  assert.deepEqual(result.data, { version: 2, junglers: DEFAULT_JUNGLERS, matchups: {}, knownDefaults: DEFAULT_JUNGLERS });
   assert.deepEqual(result.images, {});
+  assert.deepEqual(result.history, []);
   assert.equal(result.migrated, false);
   assert.deepEqual(result.unmatched, []);
+  assert.deepEqual(result.addedJunglers, []);
+});
+
+test('loadSave adds newly released junglers to a saved roster and saves the result', () => {
+  const { raw, store } = storageWith({ [STORAGE_KEYS.data]: JSON.stringify({ version: 2, junglers: ['fanny'], matchups: {} }) });
+  const result = loadSave(store);
+  assert.deepEqual(result.addedJunglers, ['hirara']);
+  assert.deepEqual(result.data.junglers, ['fanny', 'hirara']);
+  assert.deepEqual(JSON.parse(raw.getItem(STORAGE_KEYS.data)), result.data);
+  assert.deepEqual(loadSave(store).addedJunglers, []);
+});
+
+test('loadSave reads saved game history', () => {
+  const game = { id: 'g1', playedAt: '2026-09-13T10:00:00.000Z', result: 'loss', playedId: 'ling', topPickId: 'fanny', draft: { ally: ['ling'], enemy: ['saber'] } };
+  const { store } = storageWith({ [STORAGE_KEYS.history]: JSON.stringify([game]) });
+  assert.deepEqual(loadSave(store).history, [game]);
 });
 
 test('loadSave upgrades an old save once and keeps the old keys', () => {
@@ -114,6 +131,8 @@ test('loadSave upgrades an old save once and keeps the old keys', () => {
   });
   const result = loadSave(store);
   assert.equal(result.migrated, true);
+  assert.deepEqual(result.data.junglers, ['ling', 'hirara']);
+  assert.deepEqual(result.addedJunglers, ['hirara']);
   assert.deepEqual(result.data.matchups, { ling: { tigreal: { tier: 'A' } } });
   assert.deepEqual(result.images, { ling: 'data:x' });
   assert.deepEqual(JSON.parse(raw.getItem(STORAGE_KEYS.data)), result.data);
@@ -123,7 +142,7 @@ test('loadSave upgrades an old save once and keeps the old keys', () => {
 });
 
 test('loadSave prefers the version 2 save over old keys', () => {
-  const saved = { version: 2, junglers: ['fanny'], matchups: {} };
+  const saved = { version: 2, junglers: ['fanny'], matchups: {}, knownDefaults: DEFAULT_JUNGLERS };
   const { store } = storageWith({
     [STORAGE_KEYS.data]: JSON.stringify(saved),
     [STORAGE_KEYS.legacyJunglers]: JSON.stringify(['Ling']),
@@ -138,12 +157,14 @@ test('loadSave ignores a version 2 save with the wrong shape', () => {
 
 test('clearSave removes only JunglerOS saves and their backups', () => {
   const { raw, store } = storageWith({
+    [STORAGE_KEYS.history]: '[]',
     [STORAGE_KEYS.data]: '{}',
     [`${STORAGE_KEYS.data}_corrupt_backup`]: '{',
     [STORAGE_KEYS.legacyMatchups]: '{}',
     otherApp: 'keep me',
   });
   clearSave(store);
+  assert.equal(raw.getItem(STORAGE_KEYS.history), null);
   assert.equal(raw.getItem(STORAGE_KEYS.data), null);
   assert.equal(raw.getItem(`${STORAGE_KEYS.data}_corrupt_backup`), null);
   assert.equal(raw.getItem(STORAGE_KEYS.legacyMatchups), null);

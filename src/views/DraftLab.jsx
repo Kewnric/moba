@@ -5,13 +5,14 @@ import { Icons } from '../components/Icons.jsx';
 import DraftBoard from '../components/DraftBoard.jsx';
 import HeroPool from '../components/HeroPool.jsx';
 import Recommendation from '../components/Recommendation.jsx';
+import ResultRecorder from '../components/ResultRecorder.jsx';
 
 const LANE_FILTERS = ['All', ...Object.values(LANES)];
 const TAKEN_LABELS = { ally: 'Ally', enemy: 'Enemy', allyBans: 'Banned', enemyBans: 'Banned' };
 
 // Phones: the board stays pinned at the top while the recommendation and hero picker scroll under it.
 // Desktop: the hero picker is a left column beside the board and recommendation.
-export default function DraftLab({ draftState, enemyLanes, scoring, onlyPool, setOnlyPool, hasPool, customImages, setTooltip, onOpenDatabase }) {
+export default function DraftLab({ draftState, enemyLanes, scoring, onlyPool, setOnlyPool, hasPool, customImages, setTooltip, onOpenDatabase, resultRecorder }) {
     const { draft, activeSlot } = draftState;
     const [laneFilter, setLaneFilter] = useState('All');
     const [search, setSearch] = useState('');
@@ -53,6 +54,7 @@ export default function DraftLab({ draftState, enemyLanes, scoring, onlyPool, se
 
             <div className="p-3 lg:px-8 lg:pt-2 lg:pb-8 lg:col-start-2 lg:row-start-2 lg:min-h-0 lg:overflow-y-auto scrollbar-hide">
                 <Recommendation scoring={scoring} onlyPool={onlyPool} setOnlyPool={setOnlyPool} hasPool={hasPool} customImages={customImages} onOpenDatabase={onOpenDatabase} />
+                <ResultRecorder draft={draft} {...resultRecorder} />
             </div>
 
             <aside aria-label="Hero picker" className="bg-slate-900/50 border-t border-white/10 lg:border-t-0 lg:border-r lg:col-start-1 lg:row-start-1 lg:row-span-2 lg:flex lg:flex-col lg:min-h-0">

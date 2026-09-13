@@ -1,6 +1,6 @@
 # JunglerOS
 
-A Mobile Legends: Bang Bang draft helper for junglers. Enter both teams' picks and bans, and it recommends the jungler to play: from your own matchup ratings, Mythic win-rate stats, your team's composition, and the heroes you're comfortable on.
+A Mobile Legends: Bang Bang draft helper for junglers. Enter both teams' picks and bans, and it recommends the jungler to play: from your own matchup ratings, Mythic win-rate stats, your team's composition, and the heroes you're comfortable on. Record each game's result and History shows which of your ratings your results disagree with.
 
 ## Use it
 
@@ -15,6 +15,7 @@ A Mobile Legends: Bang Bang draft helper for junglers. Enter both teams' picks a
 - Each enemy's lane is guessed automatically. Change it with the menu under their slot.
 - **Undo** reverses the last change and **New** starts a fresh draft. A refresh keeps the draft in the same tab.
 - **Only my pool** limits the ranking to junglers you gave a comfort rating in Ratings.
+- **After the game**, pick the hero you played and tap **Won** or **Lost** to save the draft to History.
 
 ## How picks are ranked
 
@@ -31,6 +32,13 @@ Each available jungler gets a score out of 100:
 - Heroes picked by either team or banned are never suggested.
 - A jungler is recommended once half the enemy picks have a rating or stats behind them.
 - Before the enemy picks anything, Draft Lab ranks safe early picks instead.
+
+## History
+
+- Your overall record and win rate, and each jungler's record.
+- Your win rate when you played the **top pick** compared with other picks. The top pick is the jungler JunglerOS ranked first for the final enemy lineup, with your own slot left open.
+- **Ratings to review**: once you've played the same jungler against the same enemy at least 3 times, matchups you haven't rated, or rated two or more tiers away from your results, are listed with a one-tap fix. Win rates map to tiers as 70%+ S, 55%+ A, 45%+ B, 30%+ C, below that D.
+- Recent games, each of which you can delete. Up to 500 games are kept.
 
 ## Develop
 
@@ -56,8 +64,9 @@ Needs Node 22 or newer.
 | Path | What it holds |
 | --- | --- |
 | `src/App.jsx` | App shell: saved data, scoring, navigation and dialogs |
-| `src/views/` | The Draft Lab, Database, Assets and Data Hub screens |
-| `src/components/` | Draft board, recommendation, hero pool, avatars, dialogs and the crash screen |
+| `src/views/` | The Draft Lab, Database, History, Assets and Data Hub screens |
+| `src/components/` | Draft board, recommendation, result recorder, hero pool, avatars, dialogs and the crash screen |
+| `src/lib/history.js` | Recorded games, records by jungler and ratings to review |
 | `src/lib/scoring.js` | The score out of 100 and the reasons behind it |
 | `src/lib/draft.js` | Draft board: picks, bans, pick order and enemy lanes |
 | `src/lib/dataReducer.js` | Every change to your roster, ratings, notes and comfort |
@@ -71,9 +80,9 @@ Needs Node 22 or newer.
 
 ## Your saved data
 
-Your roster, ratings, notes, comfort ratings and custom icons are saved in the browser you use JunglerOS in. Data Hub exports them to a backup file and restores backups from any version of the app.
+Your roster, ratings, notes, comfort ratings, custom icons and game history are saved in the browser you use JunglerOS in. Data Hub exports them to a backup file and restores backups from any version of the app. Before a restore changes anything, it shows what the file contains and lets you **Merge** it into your data (the backup wins where both rate the same matchup) or **Replace** your data.
 
-Saves are keyed by hero id, not display name. The first time this version opens, it upgrades an older name-based save automatically, leaves the old copy in place, and lists any names that didn't match a hero.
+Saves are keyed by hero id, not display name. The first time this version opens, it upgrades an older name-based save automatically, leaves the old copy in place, and lists any names that didn't match a hero. When a new default jungler is added to JunglerOS, it's added to your roster once; junglers you removed stay removed.
 
 ## Updating the roster and stats
 
