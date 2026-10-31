@@ -61,7 +61,7 @@ export default function Settings({ preferences, onPreferencesChange, onEnemyOnly
                         </SettingRow>
                     </div>
                     {voice.error && <p role="alert" className="text-sm text-bad">{voice.error}</p>}
-                    <MicTester preferences={preferences} onPreferencesChange={onPreferencesChange} voiceOn={voice.on} onVoiceOff={() => voice.setOn(false)} onTeach={onTeach} onForgetWord={onForgetWord} />
+                    <MicTester preferences={preferences} onPreferencesChange={onPreferencesChange} voiceOn={voice.on} onVoiceOff={() => voice.setOn(false)} onTeach={onTeach} onForgetWord={onForgetWord} onExport={onExport} />
                 </Section>
 
                 <Section id="settings-draft" title="New drafts">

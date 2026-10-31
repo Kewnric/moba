@@ -294,9 +294,9 @@ export default function App() {
     // What was just said goes through the parser, then into the draft. Anything it can't use stays on screen,
     // so a misheard name can be taught.
     const handleVoiceResult = (alternatives) => {
-        const parsed = parseVoice(alternatives, { aliases: draftPreferences.voiceAliases });
+        const parsed = parseVoice(alternatives, { aliases: draftPreferences.voiceAliases, takenIds: [...draft.enemy, ...takenIds].filter(Boolean) });
         if (parsed.ignored) {
-            setVoiceFeedback({ heard: parsed.heard, note: 'Not a hero or command.', ok: false, canTeach: true });
+            setVoiceFeedback({ heard: parsed.heard, note: 'Not a hero or command.', ok: false, canTeach: true, guesses: parsed.guesses, phrase: parsed.heard, picked: null });
             return;
         }
         if (parsed.actions.some((action) => action.type === 'stopVoice')) {
@@ -306,13 +306,36 @@ export default function App() {
         const results = draftState.applyVoice(parsed.actions.map((action) => (
             action.type === 'lock' && !action.heroId ? { ...action, heroId: scoring.top ? scoring.top.id : null } : action
         )));
-        setVoiceFeedback({ heard: parsed.heard, note: results.map((result) => result.note).join(' '), ok: results.every((result) => result.ok), canTeach: false });
+        const [firstPick] = parsed.actions.filter((action) => action.type === 'pick');
+        setVoiceFeedback({
+            heard: parsed.heard,
+            note: results.map((result) => result.note).join(' '),
+            ok: results.every((result) => result.ok),
+            canTeach: false,
+            guesses: parsed.guesses,
+            phrase: parsed.fuzzyPhrase,
+            picked: parsed.fuzzyPhrase ? firstPick || null : null,
+        });
+    };
+
+    // Tapping a "did you mean" hero fixes this pick and remembers the phrase, so it's right from now on.
+    const correctVoice = (heroId) => {
+        const { phrase, picked } = voiceFeedback;
+        updateDraftPreferences({ voiceAliases: { ...draftPreferences.voiceAliases, [normalizeSpeech(phrase)]: heroId } });
+        const target = picked ? picked.target : 'next';
+        const results = draftState.applyVoice([
+            ...(picked ? [{ type: 'remove', heroId: picked.heroId }] : []),
+            { type: 'pick', heroId, target },
+        ]);
+        const last = results[results.length - 1];
+        setVoiceFeedback({ heard: phrase, note: last.note, ok: last.ok, canTeach: false, guesses: [], phrase: null, picked: null });
     };
 
     const voiceListener = useVoiceControl({
         enabled: voiceOn,
         lang: draftPreferences.voiceLang,
         micDeviceId: draftPreferences.micDeviceId,
+        useVoicePack: draftPreferences.voiceUsePack,
         onResult: handleVoiceResult,
         onStop: () => setVoiceOn(false),
     });
@@ -335,7 +358,7 @@ export default function App() {
         updateDraftPreferences({ voiceAliases: { ...draftPreferences.voiceAliases, [normalizeSpeech(phrase)]: heroId } });
         if (apply) {
             const [result] = draftState.applyVoice([{ type: 'pick', heroId, target: 'next' }]);
-            setVoiceFeedback({ heard: phrase, note: result.note, ok: result.ok, canTeach: false });
+            setVoiceFeedback({ heard: phrase, note: result.note, ok: result.ok, canTeach: false, guesses: [], phrase: null, picked: null });
         }
         setTeaching(null);
     };
@@ -430,7 +453,7 @@ export default function App() {
                         onEditNotes={(junglerId, enemyId) => setOpenMatchup({ junglerId, enemyId })}
                         resultLog={{ lastRecord, onRecord: recordResult, onUndoRecord: undoRecord, onNewDraft: draftState.newDraft }}
                         voice={voice}
-                        voiceBar={<VoiceBar voice={voice} feedback={voiceFeedback} micDeviceId={draftPreferences.micDeviceId} onTeach={(phrase) => setTeaching({ phrase, apply: true })} onOpenSettings={() => setView('settings')} />}
+                        voiceBar={<VoiceBar voice={voice} feedback={voiceFeedback} micDeviceId={draftPreferences.micDeviceId} onTeach={(phrase) => setTeaching({ phrase, apply: true })} onCorrect={correctVoice} onOpenSettings={() => setView('settings')} onExport={handleExport} />}
                     />
                 )}
                 {view === 'tiers' && (

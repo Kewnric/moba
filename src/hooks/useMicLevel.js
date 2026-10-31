@@ -1,10 +1,9 @@
 import { useEffect, useRef, useState } from 'react';
-import { levelFromSamples, micErrorText } from '../lib/mic.js';
+import { acquireMic, levelFromSamples, micErrorText, releaseMic } from '../lib/mic.js';
 
 const SAMPLE_SIZE = 1024;
 
 // Opens a microphone while `active` and calls onLevel with its loudness (0 to 1) on every animation frame.
-// Volume processing is off so the reading shows what the mic really picks up.
 export function useMicLevel({ active, deviceId = '', onLevel }) {
     const [status, setStatus] = useState('idle'); // idle, starting, live, error
     const [error, setError] = useState(null);
@@ -22,6 +21,7 @@ export function useMicLevel({ active, deviceId = '', onLevel }) {
         let stream = null;
         let context = null;
         let frame = null;
+        let holdsMic = false;
 
         const open = async () => {
             setStatus('starting');
@@ -32,16 +32,10 @@ export function useMicLevel({ active, deviceId = '', onLevel }) {
                 return;
             }
             try {
-                stream = await navigator.mediaDevices.getUserMedia({
-                    audio: {
-                        echoCancellation: false,
-                        noiseSuppression: false,
-                        autoGainControl: false,
-                        ...(deviceId ? { deviceId: { exact: deviceId } } : {}),
-                    },
-                });
+                stream = await acquireMic(deviceId);
+                holdsMic = true;
                 if (cancelled) {
-                    stream.getTracks().forEach((track) => track.stop());
+                    releaseMic(deviceId);
                     return;
                 }
                 const AudioContextClass = window.AudioContext || window.webkitAudioContext;
@@ -71,7 +65,7 @@ export function useMicLevel({ active, deviceId = '', onLevel }) {
         return () => {
             cancelled = true;
             cancelAnimationFrame(frame);
-            if (stream) stream.getTracks().forEach((track) => track.stop());
+            if (holdsMic && stream) releaseMic(deviceId);
             if (context && context.state !== 'closed') context.close();
             if (onLevelRef.current) onLevelRef.current(0);
         };

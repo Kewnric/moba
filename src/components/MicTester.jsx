@@ -1,12 +1,13 @@
 import { useEffect, useState } from 'react';
 import { VOICE_LANGUAGES } from '../data/voiceCommands.js';
 import { useMicDevices } from '../hooks/useMicLevel.js';
-import { useVoiceControl, voiceSupported } from '../hooks/useVoiceControl.js';
+import { installVoicePack, useVoiceControl, voicePackStatus, voiceSupported } from '../hooks/useVoiceControl.js';
 import { parseVoice } from '../lib/voice.js';
 import { Icons } from './Icons.jsx';
 import { heroName } from './HeroAvatar.jsx';
 import MicMeter from './MicMeter.jsx';
-import { VoiceCommandList } from './VoiceBar.jsx';
+import { Switch } from './ui.jsx';
+import { LocalFileNotice, VoiceCommandList } from './VoiceBar.jsx';
 
 const describe = (action) => {
     switch (action.type) {
@@ -23,21 +24,66 @@ const describe = (action) => {
     }
 };
 
+// The browser's offline voice pack, which listens on this device and is told every hero's name ahead of time. Only
+// shown where the browser offers one.
+function VoicePackRow({ lang, enabled, onChange }) {
+    const [status, setStatus] = useState('unavailable');
+    const [problem, setProblem] = useState(null);
+
+    useEffect(() => {
+        let current = true;
+        voicePackStatus(lang).then((next) => { if (current) setStatus(next); });
+        return () => { current = false; };
+    }, [lang]);
+
+    if (status === 'unavailable') return null;
+
+    const download = async () => {
+        setStatus('downloading');
+        setProblem(null);
+        try {
+            const installed = await installVoicePack(lang);
+            setStatus(installed ? 'available' : 'downloadable');
+            if (installed) onChange(true);
+            else setProblem("The voice pack couldn't be downloaded for this language.");
+        } catch (_) {
+            setStatus('downloadable');
+            setProblem("The voice pack couldn't be downloaded. Check your connection and try again.");
+        }
+    };
+
+    return (
+        <div className="border-t border-line pt-3 flex flex-col sm:flex-row sm:items-center justify-between gap-2 sm:gap-6">
+            <div className="min-w-0">
+                <div className="text-sm font-semibold text-fg">Offline voice pack</div>
+                <div className="text-xs text-fg-muted mt-0.5">Your browser listens on this device instead of its online service, and is told every hero's name first, which should help it catch them. If it does worse for you, turn it off.</div>
+                {problem && <p className="text-xs text-bad mt-1">{problem}</p>}
+            </div>
+            <div className="shrink-0">
+                {status === 'available' && <Switch label={enabled ? 'On' : 'Off'} checked={enabled} onChange={onChange} />}
+                {status === 'downloadable' && <button type="button" onClick={download} className="btn">Download</button>}
+                {status === 'downloading' && <span className="label text-fg-muted">Downloading...</span>}
+            </div>
+        </div>
+    );
+}
+
 // Checks the mic before relying on it: which one is in use, a live volume bar, and a safe way to try commands.
-export default function MicTester({ preferences, onPreferencesChange, voiceOn, onVoiceOff, onTeach, onForgetWord }) {
+export default function MicTester({ preferences, onPreferencesChange, voiceOn, onVoiceOff, onTeach, onForgetWord, onExport }) {
     const [testing, setTesting] = useState(false);
     const [hearing, setHearing] = useState(false);
     const [heard, setHeard] = useState(null);
     const [mic, setMic] = useState({ status: 'idle', error: null, micName: '' });
     const [verdict, setVerdict] = useState(null);
     const { devices, refresh } = useMicDevices();
-    const { micDeviceId, voiceLang, voiceAliases } = preferences;
+    const { micDeviceId, voiceLang, voiceAliases, voiceUsePack } = preferences;
     const taught = Object.entries(voiceAliases);
 
     const recognition = useVoiceControl({
         enabled: hearing,
         lang: voiceLang,
         micDeviceId,
+        useVoicePack: voiceUsePack,
         onStop: () => setHearing(false),
         onResult: (alternatives) => setHeard(parseVoice(alternatives, { aliases: voiceAliases })),
     });
@@ -56,6 +102,7 @@ export default function MicTester({ preferences, onPreferencesChange, voiceOn, o
 
     return (
         <div className="mt-3 space-y-4">
+            <LocalFileNotice onExport={onExport} />
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <label className="block min-w-0">
                     <span className="label text-fg-faint block mb-1">Microphone</span>
@@ -100,9 +147,12 @@ export default function MicTester({ preferences, onPreferencesChange, voiceOn, o
                         {heard.ignored
                             ? <><span className="font-semibold text-bad">not a hero or command.</span><button type="button" onClick={() => onTeach(heard.heard)} className="btn !min-h-[1.75rem] !px-2">Teach</button></>
                             : <span className="font-semibold text-fg">{heard.actions.map(describe).join(', ')}</span>}
+                        {heard.guesses.length > 0 && <span className="text-fg-muted">Close to: {heard.guesses.map(heroName).join(', ')}.</span>}
                     </div>
                 )}
             </div>
+
+            <VoicePackRow lang={voiceLang} enabled={voiceUsePack} onChange={(on) => onPreferencesChange({ voiceUsePack: on })} />
 
             <div className="border-t border-line pt-3">
                 <div className="label text-fg-faint mb-2">What you can say</div>

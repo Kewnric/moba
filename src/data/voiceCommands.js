@@ -1,3 +1,5 @@
+export const ONLINE_URL = 'https://kewnric.github.io/moba/';
+
 // The voice commands, shown in Settings and from the voice bar.
 export const VOICE_COMMANDS = [
   { say: 'Lancelot, or "they picked Lancelot"', does: 'Fills the next slot' },

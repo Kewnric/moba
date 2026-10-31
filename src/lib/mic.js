@@ -29,3 +29,27 @@ const ERROR_TEXT = {
 };
 
 export const micErrorText = (error) => ERROR_TEXT[error && error.name] || "The mic couldn't be opened. Check that it's connected, then try again.";
+
+// One open mic per device, shared by everything that needs it. Each separate open can make the browser ask for
+// permission again, and on a page opened as a local file it never remembers the answer.
+const openMics = new Map();
+
+export function acquireMic(deviceId = '') {
+  let mic = openMics.get(deviceId);
+  if (!mic) {
+    mic = { users: 0, opening: navigator.mediaDevices.getUserMedia({ audio: deviceId ? { deviceId: { exact: deviceId } } : true }) };
+    openMics.set(deviceId, mic);
+    mic.opening.catch(() => { if (openMics.get(deviceId) === mic) openMics.delete(deviceId); });
+  }
+  mic.users += 1;
+  return mic.opening;
+}
+
+export function releaseMic(deviceId = '') {
+  const mic = openMics.get(deviceId);
+  if (!mic) return;
+  mic.users -= 1;
+  if (mic.users > 0) return;
+  openMics.delete(deviceId);
+  mic.opening.then((stream) => stream.getTracks().forEach((track) => track.stop())).catch(() => {});
+}

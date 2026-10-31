@@ -55,7 +55,11 @@ Turn on **Voice** on the draft board and say hero names to fill slots. It needs 
 | New draft | Starts a fresh draft |
 | Stop listening | Turns voice off |
 
-It only acts when what you said is clearly a hero or a command, so normal talk near the mic is ignored. Hero names get misheard, so it knows common mishearings and close spellings. When it still misses one, tap **Teach** to tell it what you meant.
+Speech recognition spells hero names as whatever English it hears ("Aldo card" for Alucard, "Argos" for Argus), so anything that isn't an everyday word goes to the hero it sounds closest to. When a guess might be wrong, or nothing is close enough to act on, **Did you mean** buttons show the nearest heroes. Tapping one fixes the pick and remembers that phrase. Everyday words and normal sentences are ignored.
+
+For voice, use the online version. Browsers don't remember mic permission for a page opened from a file, so the file version asks each time you turn voice on. Your tier lists are saved separately for each, so export a backup from one and restore it in the other.
+
+Where the browser offers one, **Settings > Voice and mic** can download an offline voice pack. It listens on your device and is told every hero's name first.
 
 While voice is on, your browser sends mic audio to its own speech service to turn it into text. JunglerOS doesn't record or keep any of it.
 
@@ -134,7 +138,8 @@ Needs Node 22 or newer.
 | `src/lib/draft.js` | Draft board: picks, bans and pick order |
 | `src/lib/dataReducer.js` | Every change to your roster, ratings, groups, notes and comfort |
 | `src/lib/saveData.js` | Saved-data format, upgrades from older saves, backup import and export |
-| `src/lib/voice.js` | Turns what was heard into draft actions, including hero name matching |
+| `src/lib/voice.js` | Turns what was heard into draft actions |
+| `src/lib/heroSounds.js` | Finds the hero that something heard sounds closest to |
 | `src/lib/mic.js` | Mic level maths for the mic tester |
 | `src/lib/undoableData.js` | Undo history for saved-data changes |
 | `src/lib/backupFile.js` | Backup file names, compact writing, and size and type checks before reading |
@@ -143,6 +148,7 @@ Needs Node 22 or newer.
 | `src/data/heroes.js` | All 133 heroes: id, lanes, official roles and specialities, portrait |
 | `src/data/skillGroups.js` | Starter skill groups and name ideas |
 | `src/data/heroAliases.js` | How speech recognition tends to spell each hero |
+| `src/data/commonWords.js` | Everyday words that are never a guess at a hero |
 | `src/data/themes.js` | The color theme list; the colors are in `src/index.css` |
 | `src/data/tiers.js` | Tier labels, points and colors |
 | `tests/` | Tests for scoring, skill groups, the draft board, saved data and hero data |

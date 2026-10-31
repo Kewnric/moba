@@ -194,6 +194,7 @@ export const DEFAULT_DRAFT_PREFERENCES = {
   micDeviceId: '',
   voiceLang: 'en-US',
   voiceAliases: {},
+  voiceUsePack: false,
 };
 
 const isOptional = (value, check) => value === undefined || check(value);
@@ -215,7 +216,8 @@ export const isDraftPreferences = (value) =>
   isOptional(value.theme, (theme) => THEME_IDS.includes(theme)) &&
   isOptional(value.micDeviceId, (id) => typeof id === 'string') &&
   isOptional(value.voiceLang, (lang) => typeof lang === 'string') &&
-  isOptional(value.voiceAliases, isTextMap);
+  isOptional(value.voiceAliases, isTextMap) &&
+  isOptional(value.voiceUsePack, isBoolean);
 
 // Adds defaults for any setting missing from saved preferences, and drops settings that no longer exist.
 export const normalizeDraftPreferences = (preferences) =>
