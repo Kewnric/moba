@@ -1,4 +1,5 @@
 import { isTier } from '../data/tiers.js';
+import { makeGroupId } from './skillGroups.js';
 
 // Every change to saved data goes through here. Each action returns new objects and never edits the
 // previous state, so React always sees the change and earlier states stay intact.
@@ -33,6 +34,27 @@ const setText = (field, text) => (entry) => {
   return trimmed ? { ...entry, [field]: trimmed } : withoutKey(entry, field);
 };
 
+const groupsOf = (state) => state.skillGroups || [];
+
+function setGroupRatings(state, junglerId, ratings) {
+  const groupRatings = Object.keys(ratings).length
+    ? { ...(state.groupRatings || {}), [junglerId]: ratings }
+    : withoutKey(state.groupRatings || {}, junglerId);
+  return { ...state, groupRatings };
+}
+
+// Removes every tier a jungler has, keeping any notes written on the matchups.
+const withoutTiers = (entries) => Object.fromEntries(
+  Object.entries(entries)
+    .map(([enemyId, entry]) => [enemyId, withoutKey(entry, 'tier')])
+    .filter(([, entry]) => Object.keys(entry).length > 0),
+);
+
+const withMatchupsFor = (state, junglerId, entries) => ({
+  ...state,
+  matchups: Object.keys(entries).length ? { ...state.matchups, [junglerId]: entries } : withoutKey(state.matchups, junglerId),
+});
+
 export function dataReducer(state, action) {
   switch (action.type) {
     case 'load':
@@ -62,8 +84,74 @@ export function dataReducer(state, action) {
         ...state,
         junglers: state.junglers.filter((id) => id !== action.junglerId),
         matchups: withoutKey(state.matchups, action.junglerId),
+        ...(state.groupRatings ? { groupRatings: withoutKey(state.groupRatings, action.junglerId) } : {}),
       };
       return state.comfort ? withComfort(next, withoutKey(state.comfort, action.junglerId)) : next;
+    }
+    case 'setGroupTier': {
+      if (!isTier(action.tier) || !groupsOf(state).some((group) => group.id === action.groupId)) return state;
+      const ratings = (state.groupRatings || {})[action.junglerId] || {};
+      return setGroupRatings(state, action.junglerId, { ...ratings, [action.groupId]: action.tier });
+    }
+    case 'clearGroupTier': {
+      const ratings = (state.groupRatings || {})[action.junglerId] || {};
+      return setGroupRatings(state, action.junglerId, withoutKey(ratings, action.groupId));
+    }
+    case 'addGroup': {
+      const name = (action.name || '').trim();
+      if (!name) return state;
+      const groups = groupsOf(state);
+      const group = {
+        id: action.id || makeGroupId(name, groups),
+        name,
+        category: (action.category || '').trim() || 'Other',
+        heroIds: action.heroIds || [],
+      };
+      return { ...state, skillGroups: [...groups, group] };
+    }
+    case 'updateGroup': {
+      const name = action.name === undefined ? undefined : action.name.trim();
+      if (name === '') return state;
+      return {
+        ...state,
+        skillGroups: groupsOf(state).map((group) => (group.id !== action.groupId ? group : {
+          ...group,
+          ...(name === undefined ? {} : { name }),
+          ...(action.category === undefined ? {} : { category: action.category.trim() || 'Other' }),
+        })),
+      };
+    }
+    case 'deleteGroup': {
+      const groupRatings = Object.fromEntries(
+        Object.entries(state.groupRatings || {})
+          .map(([junglerId, ratings]) => [junglerId, withoutKey(ratings, action.groupId)])
+          .filter(([, ratings]) => Object.keys(ratings).length > 0),
+      );
+      return { ...state, skillGroups: groupsOf(state).filter((group) => group.id !== action.groupId), groupRatings };
+    }
+    case 'toggleGroupHero':
+      return {
+        ...state,
+        skillGroups: groupsOf(state).map((group) => {
+          if (group.id !== action.groupId) return group;
+          const inGroup = group.heroIds.includes(action.heroId);
+          return { ...group, heroIds: inGroup ? group.heroIds.filter((id) => id !== action.heroId) : [...group.heroIds, action.heroId] };
+        }),
+      };
+    case 'copyTierList': {
+      if (action.fromId === action.toId) return state;
+      const copied = {};
+      Object.entries(state.matchups[action.fromId] || {}).forEach(([enemyId, entry]) => {
+        if (enemyId !== action.toId && isTier(entry.tier)) copied[enemyId] = entry.tier;
+      });
+      const entries = withoutTiers(state.matchups[action.toId] || {});
+      Object.entries(copied).forEach(([enemyId, tier]) => { entries[enemyId] = { ...(entries[enemyId] || {}), tier }; });
+      const next = withMatchupsFor(state, action.toId, entries);
+      return setGroupRatings(next, action.toId, { ...((state.groupRatings || {})[action.fromId] || {}) });
+    }
+    case 'clearTierList': {
+      const next = withMatchupsFor(state, action.junglerId, withoutTiers(state.matchups[action.junglerId] || {}));
+      return setGroupRatings(next, action.junglerId, {});
     }
     default:
       return state;

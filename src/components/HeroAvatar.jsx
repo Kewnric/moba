@@ -1,49 +1,22 @@
 import { useEffect, useState } from 'react';
 import { HERO_BY_ID } from '../data/heroes.js';
-import { Icons } from './Icons.jsx';
-
-// `fill` stretches the avatar to its container, for slots sized by the layout.
-const SIZE_CLASSES = { sm: 'w-10 h-10 text-xs', md: 'w-14 h-14 text-sm', lg: 'w-20 h-20 text-base', xl: 'w-24 h-24 text-xl', fill: 'w-full h-full text-xs' };
 
 export const heroName = (heroId) => (HERO_BY_ID[heroId] ? HERO_BY_ID[heroId].name : heroId);
 
-const laneLabel = (heroId) => (HERO_BY_ID[heroId] ? HERO_BY_ID[heroId].lanes.join(' / ') : '');
-
-// Official portrait, with the hero's initials if the image can't load.
-export default function HeroAvatar({ heroId, size = 'md', className = '', showTooltip = true, quickNote = null, onEditNote = null, setTooltip }) {
+// Official portrait filling its container, with the hero's initials if the image can't load.
+export default function HeroAvatar({ heroId, className = '' }) {
     const [imgError, setImgError] = useState(false);
     const name = heroName(heroId);
     const imageSrc = HERO_BY_ID[heroId] ? HERO_BY_ID[heroId].image : null;
-    const showImage = imageSrc && !imgError;
 
     useEffect(() => { setImgError(false); }, [heroId]);
 
-    // Only a real mouse hover opens the tooltip. A tap on a touch screen also sends hover events, and the
-    // tooltip would stay stuck open after it.
-    const handlePointerEnter = (e) => {
-        if (e.pointerType === 'mouse' && showTooltip && setTooltip) {
-            const rect = e.currentTarget.getBoundingClientRect();
-            setTooltip({
-                visible: true,
-                x: rect.left + rect.width / 2,
-                top: rect.top,
-                bottom: rect.bottom,
-                content: { name, role: laneLabel(heroId), quickNote }
-            });
-        }
-    };
-
-    const handlePointerLeave = () => { if (setTooltip) setTooltip(prev => (prev.visible ? { ...prev, visible: false } : prev)); };
-
     return (
-        <div className={`relative group flex flex-col items-center ${className}`} onPointerEnter={handlePointerEnter} onPointerLeave={handlePointerLeave}>
-            <div className={`${SIZE_CLASSES[size]} rounded-xl shadow-lg flex items-center justify-center font-bold text-white overflow-hidden bg-slate-800 border border-white/10 relative transition-all duration-200 group-hover:scale-110 group-hover:shadow-cyan-500/20 group-hover:border-white/30`}>
-                {/* Not draggable itself, so a drag starts from the hero card around it instead of the image file. */}
-                {showImage ? (<img src={imageSrc} alt={name} draggable={false} loading="lazy" decoding="async" className="w-full h-full object-cover" onError={() => setImgError(true)} />) : (<span className="z-10">{name.substring(0, 2)}</span>)}
-                {!showImage && <div className="absolute inset-0 bg-gradient-to-br from-slate-700 to-slate-800"></div>}
-                <div className="absolute inset-0 bg-gradient-to-tr from-transparent via-white/10 to-transparent opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none" />
-            </div>
-            {onEditNote && (<button onClick={(e) => { e.stopPropagation(); onEditNote(); }} className="absolute -top-2 -right-2 z-20 bg-yellow-500 text-black p-1 rounded-full shadow-lg transition-opacity hover:bg-yellow-400 [@media(hover:hover)]:opacity-0 [@media(hover:hover)]:group-hover:opacity-100" title="Add Quick Tip" aria-label={`Quick tip for ${name}`}><Icons.Pencil size={10} /></button>)}
+        <div className={`relative overflow-hidden bg-ink-4 flex items-center justify-center ${className}`}>
+            {imageSrc && !imgError
+                // Not draggable itself, so a drag starts from the hero card around it instead of the image file.
+                ? <img src={imageSrc} alt={name} draggable={false} loading="lazy" decoding="async" className="w-full h-full object-cover" onError={() => setImgError(true)} />
+                : <span className="label text-fg-muted">{name.substring(0, 2)}</span>}
         </div>
     );
 }

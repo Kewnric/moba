@@ -1,17 +1,19 @@
 {
   "name": "jungleros",
   "private": true,
-  "version": "2.0.0",
-  "description": "MLBB draft assistant that recommends a jungler for the current matchup",
+  "version": "3.0.0",
+  "description": "MLBB draft sheet that scores your junglers against the enemy lineup, using only your own tier lists",
   "type": "module",
   "scripts": {
     "dev": "vite",
     "build": "vite build && node -e \"require('fs').copyFileSync('dist/index.html', 'index.html')\"",
     "preview": "vite preview",
-    "test": "vitest run",
-    "update-stats": "node scripts/update-stats.mjs"
+    "test": "vitest run"
   },
   "dependencies": {
+    "@fontsource/anton": "^5.3.0",
+    "@fontsource/barlow": "^5.3.0",
+    "@fontsource/barlow-condensed": "^5.3.0",
     "react": "18.3.1",
     "react-dom": "18.3.1"
   },

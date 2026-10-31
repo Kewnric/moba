@@ -1,14 +1,17 @@
-import { useEffect, useId, useRef } from 'react';
+import { useEffect, useId, useRef, useState } from 'react';
+import { GROUP_IDEAS } from '../data/skillGroups.js';
+import { TIER_LABELS } from '../data/tiers.js';
 import { Icons } from './Icons.jsx';
+import HeroAvatar from './HeroAvatar.jsx';
+import { TierButtons } from './ui.jsx';
 
-const CANCEL_BUTTON = 'px-3 py-2 rounded text-xs text-gray-400 hover:text-white';
 const UNMATCHED_NAMES_SHOWN = 8;
 const NON_TEXT_INPUTS = ['button', 'submit', 'reset', 'checkbox', 'radio', 'file', 'range', 'color'];
 const FOCUSABLE = 'button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [href], [tabindex]:not([tabindex="-1"])';
 
 // Shared pop-up. Esc or a click outside closes it, Enter submits it, Tab keeps focus inside it, and focus
 // moves to the element marked data-autofocus (or the first field) and back to where it was on close.
-export function Dialog({ title, icon: TitleIcon, titleClass, borderClass, onClose, onSubmit, children, footer }) {
+export function Dialog({ title, icon: TitleIcon, onClose, onSubmit, children, footer, wide = false }) {
     const titleId = useId();
     const panelRef = useRef(null);
     const onCloseRef = useRef(onClose);
@@ -60,13 +63,13 @@ export function Dialog({ title, icon: TitleIcon, titleClass, borderClass, onClos
     }, []);
 
     return (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-sm p-4 animate-fadeIn"
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4 animate-fadeIn"
             onMouseDown={(e) => { if (e.target === e.currentTarget) onCloseRef.current(); }}>
             <form ref={panelRef} role="dialog" aria-modal="true" aria-labelledby={titleId} tabIndex={-1}
                 onSubmit={(e) => { e.preventDefault(); if (onSubmit) onSubmit(); }}
                 onKeyDown={handleKeyDown}
-                className={`bg-slate-900 border ${borderClass} p-5 rounded-2xl w-full max-w-sm shadow-2xl focus:outline-none`}>
-                <h3 id={titleId} className={`text-sm font-bold mb-3 flex items-center gap-2 ${titleClass}`}>{TitleIcon && <TitleIcon size={16} />}<span>{title}</span></h3>
+                className={`bg-ink-2 border border-line-strong p-4 w-full ${wide ? 'max-w-md' : 'max-w-sm'} max-h-full overflow-y-auto scroll-thin focus:outline-none animate-rise`}>
+                <h3 id={titleId} className="display text-xl mb-3 flex items-center gap-2 text-fg">{TitleIcon && <TitleIcon size={17} className="text-accent shrink-0" />}<span className="min-w-0">{title}</span></h3>
                 {children}
                 <div className="flex flex-wrap justify-end gap-2 mt-4">{footer}</div>
             </form>
@@ -77,44 +80,51 @@ export function Dialog({ title, icon: TitleIcon, titleClass, borderClass, onClos
 // Asks before a destructive action. Focus starts on Cancel, so pressing Enter by habit changes nothing.
 export function ConfirmDialog({ title, message, confirmLabel = 'Confirm', onConfirm, onCancel }) {
     return (
-        <Dialog title={title} icon={Icons.Trash2} titleClass="text-red-400" borderClass="border-red-500/30" onClose={onCancel} onSubmit={onConfirm}
+        <Dialog title={title} icon={Icons.Trash2} onClose={onCancel} onSubmit={onConfirm}
             footer={<>
-                <button type="button" data-autofocus onClick={onCancel} className={CANCEL_BUTTON}>Cancel</button>
-                <button type="submit" className="px-3 py-2 rounded bg-red-600 hover:bg-red-500 text-white text-xs font-bold shadow-lg">{confirmLabel}</button>
+                <button type="button" data-autofocus onClick={onCancel} className="btn btn-quiet">Cancel</button>
+                <button type="submit" className="btn btn-danger">{confirmLabel}</button>
             </>}>
-            <p className="text-sm text-gray-300">{message}</p>
+            <p className="text-sm text-fg-muted">{message}</p>
         </Dialog>
     );
 }
 
-// Long matchup note, opened from the speech-bubble button (or a double-click) on a rated hero.
-export function TacticalNoteModal({ heroName, text, onChange, onCancel, onSave }) {
+// One matchup: its tier, where that tier comes from, and your notes. Opened by tapping a hero on a tier list.
+export function MatchupDialog({ junglerName, enemyName, enemyId, rating, note, onSetTier, onClearTier, onSaveNotes, onClose }) {
+    const [quickNote, setQuickNote] = useState(note.quickNote || '');
+    const [comment, setComment] = useState(note.comment || '');
+    const save = () => {
+        onSaveNotes({ quickNote, comment });
+        onClose();
+    };
     return (
-        <Dialog title={<>vs <span className="text-white">{heroName}</span></>} icon={Icons.MessageSquare} titleClass="text-cyan-400" borderClass="border-white/10"
-            onClose={onCancel} onSubmit={onSave}
+        <Dialog title={<>{junglerName} <span className="text-fg-faint">vs</span> {enemyName}</>} wide onClose={onClose} onSubmit={save}
             footer={<>
-                <button type="button" onClick={onCancel} className={CANCEL_BUTTON}>Cancel</button>
-                <button type="submit" className="px-4 py-2 rounded bg-cyan-600 hover:bg-cyan-500 text-white text-sm font-bold shadow-lg">Save Tactics</button>
+                <button type="button" onClick={onClose} className="btn btn-quiet">Cancel</button>
+                <button type="submit" className="btn btn-primary">Save</button>
             </>}>
-            <textarea data-autofocus aria-label={`Long note for ${heroName}`} className="w-full h-32 bg-slate-800 border border-white/10 rounded p-3 text-sm text-white focus:outline-none focus:border-cyan-500 resize-none"
-                placeholder="Enter deep tactical analysis..." value={text} onChange={(e) => onChange(e.target.value)}
-                onKeyDown={(e) => { if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) { e.preventDefault(); onSave(); } }} />
-            <p className="text-[10px] text-gray-500 mt-1">Ctrl+Enter to save · Esc to cancel · Shows under the recommendation in Draft</p>
-        </Dialog>
-    );
-}
-
-export function QuickTipModal({ heroName, text, onChange, onCancel, onSave }) {
-    return (
-        <Dialog title={`Quick Tip: ${heroName}`} icon={Icons.Pencil} titleClass="text-yellow-400" borderClass="border-yellow-500/30"
-            onClose={onCancel} onSubmit={onSave}
-            footer={<>
-                <button type="button" onClick={onCancel} className={CANCEL_BUTTON}>Cancel</button>
-                <button type="submit" className="px-3 py-2 rounded bg-yellow-600 hover:bg-yellow-500 text-black text-xs font-bold shadow-lg">Save Tip</button>
-            </>}>
-            <input data-autofocus type="text" maxLength="30" aria-label={`Quick tip for ${heroName}`} className="w-full bg-slate-800 border border-white/10 rounded px-3 py-2 text-sm text-white focus:outline-none focus:border-yellow-500"
-                placeholder="Ex: Ult cancels S2 (Max 30 chars)" value={text} onChange={(e) => onChange(e.target.value)} />
-            <p className="text-[10px] text-gray-500 mt-1">Enter to save · Esc to cancel</p>
+            <div className="flex items-center gap-3">
+                <HeroAvatar heroId={enemyId} className="w-14 h-14 shrink-0" />
+                <div className="min-w-0">
+                    <TierButtons value={rating ? rating.tier : null} inherited={Boolean(rating && rating.source === 'group')} label={`Rate ${enemyName}`}
+                        onChange={(tier) => (rating && rating.source === 'hero' && rating.tier === tier ? onClearTier() : onSetTier(tier))} />
+                    <p className="text-xs text-fg-muted mt-1.5">
+                        {!rating && 'Not rated. Counts as Even.'}
+                        {rating && rating.source === 'group' && `${TIER_LABELS[rating.tier]}, from ${rating.groupName}. Tap a letter to rate this hero directly.`}
+                        {rating && rating.source === 'hero' && `${TIER_LABELS[rating.tier]}, your rating${rating.overrides ? `, replacing ${rating.overrides.groupName} (${rating.overrides.tier})` : ''}. Tap it again to remove it.`}
+                    </p>
+                </div>
+            </div>
+            <label className="block mt-3">
+                <span className="label text-fg-faint block mb-1">Quick tip</span>
+                <input type="text" maxLength={30} className="field" placeholder="Ult cancels their S2 (30 characters)" value={quickNote} onChange={(e) => setQuickNote(e.target.value)} />
+            </label>
+            <label className="block mt-3">
+                <span className="label text-fg-faint block mb-1">Long note</span>
+                <textarea rows={3} className="field resize-none" placeholder="How you play this matchup. Shows on the stat sheet." value={comment} onChange={(e) => setComment(e.target.value)}
+                    onKeyDown={(e) => { if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) { e.preventDefault(); save(); } }} />
+            </label>
         </Dialog>
     );
 }
@@ -123,18 +133,66 @@ export function QuickTipModal({ heroName, text, onChange, onCancel, onSave }) {
 export function AddJunglerModal({ options, value, onChange, onCancel, onAdd }) {
     const add = () => { if (value) onAdd(); };
     return (
-        <Dialog title="Add Jungler" icon={Icons.Plus} titleClass="text-green-400" borderClass="border-green-500/30"
-            onClose={onCancel} onSubmit={add}
+        <Dialog title="Add a jungler" icon={Icons.Plus} onClose={onCancel} onSubmit={add}
             footer={<>
-                <button type="button" onClick={onCancel} className={CANCEL_BUTTON}>Cancel</button>
-                <button type="submit" disabled={!value} className="px-3 py-2 rounded bg-green-600 hover:bg-green-500 text-white text-xs font-bold shadow-lg disabled:opacity-40 disabled:cursor-not-allowed">Add Hero</button>
+                <button type="button" onClick={onCancel} className="btn btn-quiet">Cancel</button>
+                <button type="submit" disabled={!value} className="btn btn-primary">Add hero</button>
             </>}>
-            <select data-autofocus aria-label="Hero to add" className="w-full bg-slate-800 border border-white/10 rounded px-3 py-2 text-sm text-white focus:outline-none focus:border-green-500"
-                value={value} onChange={(e) => onChange(e.target.value)}
+            <select data-autofocus aria-label="Hero to add" className="field" value={value} onChange={(e) => onChange(e.target.value)}
                 onKeyDown={(e) => { if (e.key === 'Enter' && value) { e.preventDefault(); add(); } }}>
                 <option value="" disabled>Choose a hero...</option>
-                {options.map(option => <option key={option.id} value={option.id}>{option.name}</option>)}
+                {options.map((option) => <option key={option.id} value={option.id}>{option.name}</option>)}
             </select>
+        </Dialog>
+    );
+}
+
+export function CopyTierListModal({ junglerName, options, onCopy, onCancel }) {
+    const [fromId, setFromId] = useState('');
+    const copy = () => { if (fromId) onCopy(fromId); };
+    return (
+        <Dialog title={`Copy a tier list to ${junglerName}`} icon={Icons.Copy} onClose={onCancel} onSubmit={copy}
+            footer={<>
+                <button type="button" onClick={onCancel} className="btn btn-quiet">Cancel</button>
+                <button type="submit" disabled={!fromId} className="btn btn-primary">Replace and copy</button>
+            </>}>
+            <select data-autofocus aria-label="Jungler to copy from" className="field" value={fromId} onChange={(e) => setFromId(e.target.value)}>
+                <option value="" disabled>Copy from...</option>
+                {options.map((option) => <option key={option.id} value={option.id}>{option.name} ({option.rated} rated)</option>)}
+            </select>
+            <p className="text-xs text-fg-muted mt-2">Good for junglers that play alike. This replaces all of {junglerName}'s tiers and group ratings. Their notes stay.</p>
+        </Dialog>
+    );
+}
+
+export function NewGroupModal({ existingCategories, onCreate, onCancel }) {
+    const [name, setName] = useState('');
+    const [category, setCategory] = useState('');
+    const listId = useId();
+    const create = () => { if (name.trim()) onCreate({ name, category }); };
+    return (
+        <Dialog title="New skill group" icon={Icons.Layers} wide onClose={onCancel} onSubmit={create}
+            footer={<>
+                <button type="button" onClick={onCancel} className="btn btn-quiet">Cancel</button>
+                <button type="submit" disabled={!name.trim()} className="btn btn-primary">Create</button>
+            </>}>
+            <label className="block">
+                <span className="label text-fg-faint block mb-1">Name</span>
+                <input type="text" data-autofocus maxLength={40} className="field" placeholder="What skill do these heroes share?" value={name} onChange={(e) => setName(e.target.value)} />
+            </label>
+            <label className="block mt-3">
+                <span className="label text-fg-faint block mb-1">Category</span>
+                <input type="text" maxLength={40} className="field" list={listId} placeholder="Movement, Evasion, Threat..." value={category} onChange={(e) => setCategory(e.target.value)} />
+                <datalist id={listId}>{existingCategories.map((option) => <option key={option} value={option} />)}</datalist>
+            </label>
+            <div className="mt-3">
+                <div className="label text-fg-faint mb-1.5">Or start from an idea</div>
+                <div className="flex flex-wrap gap-1">
+                    {GROUP_IDEAS.map((idea) => (
+                        <button key={idea.name} type="button" className="chip !normal-case !tracking-normal" onClick={() => { setName(idea.name); setCategory(idea.category); }}>{idea.name}</button>
+                    ))}
+                </div>
+            </div>
         </Dialog>
     );
 }
@@ -145,30 +203,30 @@ export function ImportDialog({ summary, onMerge, onReplace, onCancel }) {
         [summary.junglers, 'jungler'],
         [summary.ratings, 'matchup rating'],
         [summary.comfort, 'comfort rating'],
+        [summary.groups, 'skill group'],
         [summary.games, 'recorded game'],
     ];
     const shownNames = summary.unmatched.slice(0, UNMATCHED_NAMES_SHOWN);
     const hiddenNames = summary.unmatched.length - shownNames.length;
     return (
-        <Dialog title="Restore backup" icon={Icons.Upload} titleClass="text-purple-400" borderClass="border-purple-500/30"
-            onClose={onCancel} onSubmit={onMerge}
+        <Dialog title="Restore backup" icon={Icons.Upload} onClose={onCancel} onSubmit={onMerge}
             footer={<>
-                <button type="button" onClick={onCancel} className={CANCEL_BUTTON}>Cancel</button>
-                <button type="button" onClick={onReplace} className="px-3 py-2 rounded border border-red-500/50 text-red-300 hover:bg-red-500/20 text-xs font-bold">Replace my data</button>
-                <button type="submit" data-autofocus className="px-3 py-2 rounded bg-purple-600 hover:bg-purple-500 text-white text-xs font-bold shadow-lg">Merge</button>
+                <button type="button" onClick={onCancel} className="btn btn-quiet">Cancel</button>
+                <button type="button" onClick={onReplace} className="btn btn-danger">Replace my data</button>
+                <button type="submit" data-autofocus className="btn btn-primary">Merge</button>
             </>}>
-            <p className="text-xs text-gray-400 mb-2 break-all">{summary.fileName}</p>
-            <ul className="grid grid-cols-2 gap-x-4 gap-y-1 text-xs text-gray-300 mb-3">
-                {counts.map(([count, label]) => <li key={label}><span className="font-mono font-bold text-white">{count}</span> {label}{count === 1 ? '' : 's'}</li>)}
+            <p className="text-xs text-fg-muted mb-2 break-all">{summary.fileName}</p>
+            <ul className="grid grid-cols-2 gap-x-4 gap-y-1 text-sm text-fg-muted mb-3">
+                {counts.map(([count, label]) => <li key={label}><span className="font-semibold text-fg tabular-nums">{count}</span> {label}{count === 1 ? '' : 's'}</li>)}
             </ul>
             {summary.unmatched.length > 0 && (
-                <p className="text-[11px] text-amber-300 mb-3">These names aren't heroes and will be skipped: {shownNames.join(', ')}{hiddenNames > 0 ? `, and ${hiddenNames} more` : ''}.</p>
+                <p className="text-xs text-accent mb-3">These names aren't heroes and will be skipped: {shownNames.join(', ')}{hiddenNames > 0 ? `, and ${hiddenNames} more` : ''}.</p>
             )}
             {summary.skippedIcons > 0 && (
-                <p className="text-[11px] text-gray-400 mb-3">This backup has {summary.skippedIcons} custom icon{summary.skippedIcons === 1 ? '' : 's'} from an older version. JunglerOS now always uses the official portraits, so they're skipped.</p>
+                <p className="text-xs text-fg-muted mb-3">This backup has {summary.skippedIcons} custom icon{summary.skippedIcons === 1 ? '' : 's'} from an older version. JunglerOS now always uses the official portraits, so they're skipped.</p>
             )}
-            <p className="text-[11px] text-gray-400"><span className="text-white font-semibold">Merge</span> keeps your data and adds the backup's. Where both rate the same matchup, the backup wins.</p>
-            <p className="text-[11px] text-gray-400 mt-1"><span className="text-red-300 font-semibold">Replace</span> deletes your current ratings, notes, comfort and games first.</p>
+            <p className="text-xs text-fg-muted"><span className="text-fg font-semibold">Merge</span> keeps your data and adds the backup's. Where both rate the same matchup, the backup wins.</p>
+            <p className="text-xs text-fg-muted mt-1"><span className="text-bad font-semibold">Replace</span> deletes your current ratings, notes, comfort, skill groups and games first.</p>
         </Dialog>
     );
 }

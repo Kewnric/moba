@@ -1,229 +1,170 @@
-// JunglerOS pick scoring: a total out of 100 from matchups, team fit, comfort and meta, minus the risk
-// of being counter-picked. Plain functions with no React or browser code, shared by the app and tests.
-import { LANES } from '../data/heroes.js';
+// JunglerOS viability: a score out of 100 made only from your own tier ratings and comfort. Nothing else goes
+// into it. Risk is reported next to the score and never changes it. Plain functions shared by the app and tests.
+import { TIER_POINTS, UNRATED_POINTS, gradeFor } from '../data/tiers.js';
 import { isComfortRating } from './dataReducer.js';
 
-export const SCORE_PARTS = { matchup: 45, teamFit: 20, comfort: 20, meta: 15 };
-export const MAX_RISK = 10;
+// Share of the score, in percent, that comes from comfort. The rest comes from matchups.
+export const DEFAULT_COMFORT_WEIGHT = 30;
+export const COMFORT_WEIGHTS = [0, 20, 30, 40, 50];
+export const ENEMY_JUNGLER_WEIGHT = 1.5;
+export const TEAM_SIZE = 5;
+export const GRAPH_OPTIONS = 6;
 
-const TIER_VALUES = { S: 1, A: 0.75, B: 0.5, C: 0.25, D: 0 };
-// With both sources on, a matchup from win-rate stats counts half as much as a rating you entered.
-const STATS_CONFIDENCE = 0.5;
-// Win-rate change, in percentage points, that counts as a perfect (or hopeless) matchup.
-const FULL_MATCHUP_SWING = 5;
-// Every jungler starts with one imaginary even matchup, so a single number can't swing the score.
-const PRIOR_WEIGHT = 1;
-const ENEMY_JUNGLER_WEIGHT = 1.5;
-// Share of the enemy picks that need a rating or stats before a jungler can be recommended.
-const MIN_COVERAGE = 0.5;
-// An open hero that lowers your win rate by at least this many points is a strong counter.
-const STRONG_COUNTER = -3;
-const RISK_PER_COUNTER = 2;
-const TEAM_SIZE = 5;
-const MIN_ALLIES_FOR_TEAM_FIT = 2;
-// Duo win-rate change, in percentage points, that counts as the best (or worst) possible teammate.
-// Bigger changes, such as two junglers on one team, are capped here.
-const FULL_SYNERGY_SWING = 3;
-// Synergy with your teammates moves team fit by at most this share of its points.
-const SYNERGY_SHARE = 0.25;
+const UNSET_COMFORT = 3;
 
-const clamp = (value, min, max) => Math.min(max, Math.max(min, value));
-// Removes floating-point noise such as 11.999999999999996.
-const snap = (value) => Math.round(value * 1e9) / 1e9;
-const hasOwn = (object, key) => Object.prototype.hasOwnProperty.call(object, key);
+const round1 = (value) => Math.round(value * 10) / 10;
 
-// Which data a score may use: 'mine' is your tier ratings only, 'stats' is Mythic stats only, and
-// anything else is both, with your ratings first.
-const sourceFlags = (ratingSource) => ({
-  useRatings: ratingSource !== 'stats',
-  useStats: ratingSource !== 'mine',
-  statsOnly: ratingSource === 'stats',
-});
+export const comfortScore = (rating) => ((isComfortRating(rating) ? rating : UNSET_COMFORT) - 1) * 25;
 
-function traitsOf(info) {
-  const roles = (info && info.roles) || [];
-  const specialities = (info && info.specialities) || [];
+const comfortValue = (entry) => (isComfortRating(entry.comfort) ? entry.comfort : UNSET_COMFORT);
+
+// How worrying it is that this many heroes you rated Countered can still be picked.
+export const riskLevel = (openCounters) => {
+  if (openCounters === 0) return 'none';
+  if (openCounters <= 3) return 'low';
+  if (openCounters <= 8) return 'medium';
+  return 'high';
+};
+
+const pointsFor = (rating) => (rating ? TIER_POINTS[rating.tier] : UNRATED_POINTS);
+
+function matchupsFor(junglerId, enemyIds, enemyJunglerId, tiers, notes) {
+  return enemyIds.map((enemyId) => {
+    const rating = tiers[enemyId] || null;
+    const note = notes[enemyId] || {};
+    return {
+      enemyId,
+      tier: rating ? rating.tier : null,
+      points: pointsFor(rating),
+      source: rating ? rating.source : null,
+      groupId: rating && rating.groupId ? rating.groupId : null,
+      groupName: rating && rating.groupName ? rating.groupName : null,
+      overridesGroup: rating && rating.overrides ? rating.overrides.groupName : null,
+      weight: enemyId === enemyJunglerId ? ENEMY_JUNGLER_WEIGHT : 1,
+      quickNote: note.quickNote || null,
+      comment: note.comment || null,
+    };
+  });
+}
+
+const weightedAverage = (matchups) => {
+  const totalWeight = matchups.reduce((sum, matchup) => sum + matchup.weight, 0);
+  return matchups.reduce((sum, matchup) => sum + matchup.points * matchup.weight, 0) / totalWeight;
+};
+
+function riskFor(tiers, openIds, enemyIds, picksLeft) {
+  const open = (tier) => (picksLeft > 0 ? openIds.filter((heroId) => tiers[heroId] && tiers[heroId].tier === tier).sort() : []);
+  const openCounters = open('D');
   return {
-    frontline: roles.includes('Tank') || (roles.includes('Fighter') && !roles.some((role) => ['Assassin', 'Marksman', 'Mage'].includes(role))),
-    magic: roles.includes('Mage') || specialities.includes('Magic Damage'),
-    control: specialities.some((speciality) => ['Crowd Control', 'Control', 'Initiator'].includes(speciality)),
+    level: riskLevel(openCounters.length),
+    openCounters,
+    openUnfavored: open('C'),
+    facing: enemyIds.filter((enemyId) => tiers[enemyId] && tiers[enemyId].tier === 'D'),
+    picksLeft,
   };
 }
 
-function matchupPart(junglerId, enemies, ratings, matchupStats, flags) {
-  const junglerRatings = ratings[junglerId] || {};
-  const junglerStats = matchupStats[junglerId] || {};
-  let weightedValue = PRIOR_WEIGHT * 0.5;
-  let totalWeight = PRIOR_WEIGHT;
-  let rated = 0;
-  let known = 0;
-
-  const details = enemies.map(({ heroId: enemyId, lane }) => {
-    const weight = lane === LANES.JUNGLE ? ENEMY_JUNGLER_WEIGHT : 1;
-    const entry = junglerRatings[enemyId];
-    const detail = {
-      enemyId,
-      lane: lane || null,
-      weight,
-      source: null,
-      value: null,
-      quickNote: (entry && entry.quickNote) || null,
-      comment: (entry && entry.comment) || null,
-    };
-
-    if (flags.useRatings && entry && hasOwn(TIER_VALUES, entry.tier)) {
-      Object.assign(detail, { source: 'you', tier: entry.tier, value: TIER_VALUES[entry.tier] });
-      rated += 1;
-    } else if (flags.useStats && typeof junglerStats[enemyId] === 'number') {
-      const delta = junglerStats[enemyId];
-      Object.assign(detail, { source: 'stats', delta, value: clamp(0.5 + delta / (2 * FULL_MATCHUP_SWING), 0, 1) });
-    }
-
-    if (detail.source) {
-      const confidence = detail.source === 'you' || flags.statsOnly ? 1 : STATS_CONFIDENCE;
-      weightedValue += weight * confidence * detail.value;
-      totalWeight += weight * confidence;
-      known += 1;
-    }
-    return detail;
-  });
-
-  return { value: weightedValue / totalWeight, rated, known, details };
-}
-
-// Duo win-rate changes between a jungler and each teammate already picked that has stats.
-function synergyWith(junglerId, allyIds, synergyStats) {
-  const junglerStats = synergyStats[junglerId] || {};
-  return allyIds
-    .filter((allyId) => typeof junglerStats[allyId] === 'number')
-    .map((allyId) => ({ allyId, delta: junglerStats[allyId] }));
-}
-
-function teamFitPart(candidateInfo, allyInfos, synergy) {
-  const reasons = [];
-  let value = 0.5;
-
-  if (allyInfos.length < MIN_ALLIES_FOR_TEAM_FIT) {
-    reasons.push('Team composition counts once two of your teammates have picked.');
-  } else {
-    const team = allyInfos.map(traitsOf);
-    const candidate = traitsOf(candidateInfo);
-    if (!team.some((traits) => traits.frontline)) {
-      if (candidate.frontline) { value += 0.25; reasons.push('Adds a frontline your team is missing.'); }
-      else { value -= 0.15; reasons.push('Your team still has no frontline.'); }
-    }
-    if (!team.some((traits) => traits.magic)) {
-      if (candidate.magic) { value += 0.25; reasons.push('Adds magic damage to an all-physical team.'); }
-      else { value -= 0.1; reasons.push("Your team's damage stays all physical."); }
-    }
-    if (!team.some((traits) => traits.control) && candidate.control) {
-      value += 0.1;
-      reasons.push('Adds crowd control your team is missing.');
-    }
-    if (!reasons.length) reasons.push('Your team already has a frontline, magic damage and crowd control.');
-  }
-
-  if (synergy.length) {
-    const capped = synergy.map(({ delta }) => clamp(delta, -FULL_SYNERGY_SWING, FULL_SYNERGY_SWING));
-    const average = capped.reduce((sum, delta) => sum + delta, 0) / capped.length;
-    value += (average / FULL_SYNERGY_SWING) * SYNERGY_SHARE;
-  }
-
-  return { value: clamp(value, 0, 1), reasons, synergy };
-}
-
-// Open heroes that counter this jungler: strong counters by stats, and heroes you rated Countered (D).
-// Where you rated a hero anything better, your rating overrides the stats.
-function counterRiskPart(junglerId, picksLeft, takenIds, matchupStats, ratings, flags) {
-  if (picksLeft <= 0) return { points: 0, counterIds: [] };
-  const strength = new Map(); // lower is a stronger counter
-  if (flags.useStats) {
-    Object.entries(matchupStats[junglerId] || {}).forEach(([heroId, delta]) => {
-      if (delta <= STRONG_COUNTER) strength.set(heroId, delta);
-    });
-  }
-  if (flags.useRatings) {
-    Object.entries(ratings[junglerId] || {}).forEach(([heroId, entry]) => {
-      if (!entry || !hasOwn(TIER_VALUES, entry.tier)) return;
-      if (entry.tier === 'D') strength.set(heroId, -Infinity);
-      else strength.delete(heroId);
-    });
-  }
-  const counterIds = Array.from(strength.entries())
-    .filter(([heroId]) => !takenIds.has(heroId))
-    .sort((a, b) => (a[1] - b[1]) || a[0].localeCompare(b[0]))
-    .map(([heroId]) => heroId);
-  const points = Math.min(MAX_RISK, counterIds.length * RISK_PER_COUNTER) * (picksLeft / TEAM_SIZE);
-  return { points, counterIds: counterIds.slice(0, 3) };
-}
-
-const comfortPoints = (rating) =>
-  (isComfortRating(rating) ? (SCORE_PARTS.comfort * (rating - 1)) / 4 : SCORE_PARTS.comfort / 2);
-
-const metaPoints = (heroMeta) => {
-  const winRate = heroMeta && typeof heroMeta.winRate === 'number' ? heroMeta.winRate : null;
-  return winRate === null ? SCORE_PARTS.meta / 2 : SCORE_PARTS.meta * clamp(0.5 + (winRate - 0.5) * 10, 0, 1);
-};
-
-// Ranks your junglers for the current draft. With no enemy picks yet it still ranks early picks
-// (mode "blind") but recommends nobody. ratingSource picks the data: 'mine', 'stats' or 'both'.
+// Ranks your junglers for the current enemy lineup. Before the first enemy pick (mode "blind") the matchup
+// part is your average rating against every hero still open.
 export function scoreJunglers({
   junglerIds,
-  enemies = [],
-  allyIds = [],
+  enemyIds = [],
+  enemyJunglerId = null,
   unavailableIds = [],
-  ratings = {},
+  tiersByJungler = {},
+  matchups: notesByJungler = {},
   comfort = {},
+  comfortWeight = DEFAULT_COMFORT_WEIGHT,
   onlyPool = false,
-  matchupStats = {},
-  synergyStats = {},
-  meta = {},
-  heroInfo = () => null,
-  ratingSource = 'both',
+  heroIds = [],
 }) {
-  const flags = sourceFlags(ratingSource);
-  const taken = new Set([...enemies.map((enemy) => enemy.heroId), ...allyIds, ...unavailableIds]);
-  const picksLeft = Math.max(0, TEAM_SIZE - enemies.length);
-  const mode = enemies.length ? 'counter' : 'blind';
-  const allyInfos = allyIds.map(heroInfo).filter(Boolean);
+  const taken = new Set([...enemyIds, ...unavailableIds]);
+  const picksLeft = Math.max(0, TEAM_SIZE - enemyIds.length);
+  const mode = enemyIds.length ? 'counter' : 'blind';
+  const share = comfortWeight / 100;
 
-  const ranked = Array.from(new Set(junglerIds))
-    .filter((id) => !taken.has(id))
+  const entries = Array.from(new Set(junglerIds))
     .filter((id) => !onlyPool || isComfortRating(comfort[id]))
     .map((id) => {
-      const matchup = matchupPart(id, enemies, ratings, matchupStats, flags);
-      const fit = teamFitPart(heroInfo(id), allyInfos, flags.useStats ? synergyWith(id, allyIds, synergyStats) : []);
-      const risk = counterRiskPart(id, picksLeft, new Set([...taken, id]), matchupStats, ratings, flags);
-      const winRate = flags.useStats && meta[id] && typeof meta[id].winRate === 'number' ? meta[id].winRate : null;
-      const parts = {
-        matchup: snap(SCORE_PARTS.matchup * matchup.value),
-        teamFit: snap(SCORE_PARTS.teamFit * fit.value),
-        comfort: snap(comfortPoints(comfort[id])),
-        meta: snap(flags.useStats ? metaPoints(meta[id]) : SCORE_PARTS.meta / 2),
-        risk: snap(risk.points),
-      };
-      const total = Math.round(clamp(parts.matchup + parts.teamFit + parts.comfort + parts.meta - parts.risk, 0, 100) * 10) / 10;
+      const tiers = tiersByJungler[id] || {};
+      const openIds = heroIds.filter((heroId) => !taken.has(heroId) && heroId !== id);
+      const lineup = matchupsFor(id, enemyIds, enemyJunglerId, tiers, notesByJungler[id] || {});
+      const field = openIds.map((heroId) => pointsFor(tiers[heroId]));
+      const fieldAverage = field.length ? field.reduce((sum, points) => sum + points, 0) / field.length : UNRATED_POINTS;
+      const matchupScore = round1(mode === 'counter' ? weightedAverage(lineup) : fieldAverage);
+      const comfortPart = comfortScore(comfort[id]);
+      const total = round1(matchupScore * (1 - share) + comfortPart * share);
       return {
         id,
         total,
-        parts,
-        coverage: { rated: matchup.rated, known: matchup.known, total: enemies.length },
-        confident: enemies.length > 0 && matchup.known / enemies.length >= MIN_COVERAGE,
-        details: {
-          matchups: matchup.details,
-          teamFit: { reasons: fit.reasons, synergy: fit.synergy },
-          risk: { counterIds: risk.counterIds, picksLeft },
-          comfort: isComfortRating(comfort[id]) ? comfort[id] : null,
-          winRate,
-        },
+        grade: gradeFor(total),
+        matchupScore,
+        comfortScore: comfortPart,
+        comfort: isComfortRating(comfort[id]) ? comfort[id] : null,
+        matchups: lineup,
+        coverage: mode === 'counter'
+          ? { rated: lineup.filter((matchup) => matchup.tier).length, total: lineup.length }
+          : { rated: openIds.filter((heroId) => tiers[heroId]).length, total: openIds.length },
+        risk: riskFor(tiers, openIds, enemyIds, picksLeft),
       };
-    })
+    });
+
+  const ranked = entries
+    .filter((entry) => !taken.has(entry.id))
     .sort((a, b) =>
-      (b.confident - a.confident) ||
       (b.total - a.total) ||
+      (comfortValue(b) - comfortValue(a)) ||
       (b.coverage.rated - a.coverage.rated) ||
       a.id.localeCompare(b.id));
 
-  const recommended = mode === 'counter' && ranked.length && ranked[0].confident ? ranked[0] : null;
-  return { mode, ranked, recommended };
+  return {
+    mode,
+    ranked,
+    unavailable: entries.filter((entry) => taken.has(entry.id)),
+    top: ranked[0] || null,
+  };
+}
+
+const SORTERS = {
+  viability: (a, b) => b.total - a.total,
+  risk: (a, b) => (a.risk.openCounters.length - b.risk.openCounters.length) || (a.risk.facing.length - b.risk.facing.length) || (b.total - a.total),
+  comfort: (a, b) => (comfortValue(b) - comfortValue(a)) || (b.total - a.total),
+};
+
+// Re-sorts ranked entries. Ties keep their ranked order, so the top of the list stays the top pick.
+export function sortEntries(entries, key, nameOf) {
+  const sorter = SORTERS[key] || ((a, b) => nameOf(a.id).localeCompare(nameOf(b.id)));
+  return [...entries].sort(sorter);
+}
+
+// The junglers on the hexagon: your best options in ranked order. A jungler you opened from further down
+// takes the last corner, so the one you're looking at is always on the chart.
+export function graphOptions(ranked, viewedId, size = GRAPH_OPTIONS) {
+  const options = ranked.slice(0, size);
+  const viewed = viewedId && !options.some((entry) => entry.id === viewedId) ? ranked.find((entry) => entry.id === viewedId) : null;
+  if (viewed) options[options.length - 1] = viewed;
+  return options;
+}
+
+// Open heroes that counter the most of your junglers, for filling in bans. Looks at the junglers you play
+// (comfort 3 or higher) once any comfort is set, or your whole roster before that.
+export function banSuggestions({ junglerIds, tiersByJungler = {}, comfort = {}, takenIds = [], limit = 5 }) {
+  const taken = new Set(takenIds);
+  const played = junglerIds.filter((id) => isComfortRating(comfort[id]) && comfort[id] >= UNSET_COMFORT);
+  const focus = played.length ? played : junglerIds;
+  const tally = new Map();
+  focus.forEach((junglerId) => {
+    Object.entries(tiersByJungler[junglerId] || {}).forEach(([heroId, { tier }]) => {
+      if (taken.has(heroId) || (tier !== 'D' && tier !== 'C')) return;
+      const item = tally.get(heroId) || { heroId, counters: [], unfavored: [] };
+      (tier === 'D' ? item.counters : item.unfavored).push(junglerId);
+      tally.set(heroId, item);
+    });
+  });
+  return Array.from(tally.values())
+    .sort((a, b) =>
+      (b.counters.length - a.counters.length) ||
+      (b.unfavored.length - a.unfavored.length) ||
+      a.heroId.localeCompare(b.heroId))
+    .slice(0, limit);
 }

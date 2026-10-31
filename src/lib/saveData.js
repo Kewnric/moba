@@ -2,11 +2,13 @@ import { HEROES, HERO_BY_ID, LANES } from '../data/heroes.js';
 import { isComfortRating } from './dataReducer.js';
 import { findHeroId } from './heroIds.js';
 import { isGameRecord, isHistory, mergeHistory } from './history.js';
+import { cleanGroupRatings, cleanGroups, withSkillData } from './skillGroups.js';
 import { isPlainObject, isStringArray } from './storage.js';
 
 // Saved data, version 2: { version, junglers: [heroId], matchups: { junglerId: { enemyId: entry } },
-// comfort?: { junglerId: 1-5 }, knownDefaults?: [heroId] } where an entry holds any of
-// { tier, quickNote, comment }. Game history and draft preferences are saved under their own keys.
+// comfort?: { junglerId: 1-5 }, knownDefaults?: [heroId], skillGroups?: [{ id, name, category, heroIds }],
+// groupRatings?: { junglerId: { groupId: tier } } } where an entry holds any of { tier, quickNote, comment }.
+// Game history and draft preferences are saved under their own keys.
 
 export const SAVE_VERSION = 2;
 
@@ -31,7 +33,7 @@ export const DEFAULT_JUNGLERS = HEROES.filter((hero) => hero.lanes.includes(LANE
 const JUNGLERS_ADDED_AFTER_V1 = ['hirara'];
 const LEGACY_DEFAULT_JUNGLERS = DEFAULT_JUNGLERS.filter((id) => !JUNGLERS_ADDED_AFTER_V1.includes(id));
 
-export const emptyData = () => ({
+export const emptyData = () => withSkillData({
   version: SAVE_VERSION,
   junglers: [...DEFAULT_JUNGLERS],
   matchups: {},
@@ -119,8 +121,20 @@ export const buildExport = (data, history = []) => ({
   matchups: data.matchups,
   comfort: data.comfort || {},
   ...(data.knownDefaults ? { knownDefaults: data.knownDefaults } : {}),
+  ...(data.skillGroups ? { skillGroups: data.skillGroups } : {}),
+  ...(data.groupRatings ? { groupRatings: data.groupRatings } : {}),
   history,
 });
+
+// Skill groups from a backup, with hero and jungler ids that no longer exist dropped. Backups from before
+// skill groups existed have none, so nothing is added here; withSkillData fills them in on restore.
+function importedSkillData(file) {
+  if (file.skillGroups === undefined) return {};
+  const skillGroups = cleanGroups(file.skillGroups);
+  const ratings = cleanGroupRatings(file.groupRatings, skillGroups);
+  const groupRatings = Object.fromEntries(Object.entries(ratings).filter(([junglerId]) => HERO_BY_ID[junglerId]));
+  return { skillGroups, groupRatings };
+}
 
 // Turns a backup file (current format or the old name-based one) into saved data and games. Custom icons
 // from older backups are skipped and counted in `skippedIcons`.
@@ -132,7 +146,7 @@ export function normalizeImport(file) {
     );
     // Newest first, keeping the same number of games the app keeps.
     const history = Array.isArray(file.history) ? mergeHistory([], file.history.filter(isGameRecord)) : [];
-    return { ...converted, history, skippedIcons: countIcons(file.images) };
+    return { ...converted, data: { ...converted.data, ...importedSkillData(file) }, history, skippedIcons: countIcons(file.images) };
   }
   if (isPlainObject(file) && (file.matchupData || file.junglerList)) {
     return { ...migrateV1(file), history: [], skippedIcons: countIcons(file.customImages) };
@@ -159,11 +173,22 @@ export function mergeSaveData(current, imported) {
   const data = { version: SAVE_VERSION, junglers, matchups };
   if (Object.keys(comfort).length) data.comfort = comfort;
   if (knownDefaults.length) data.knownDefaults = knownDefaults;
+
+  if (current.skillGroups || imported.skillGroups) {
+    const incoming = imported.skillGroups || [];
+    const incomingIds = incoming.map((group) => group.id);
+    data.skillGroups = [...(current.skillGroups || []).filter((group) => !incomingIds.includes(group.id)), ...incoming];
+    data.groupRatings = { ...(current.groupRatings || {}) };
+    Object.entries(imported.groupRatings || {}).forEach(([junglerId, ratings]) => {
+      data.groupRatings[junglerId] = { ...(data.groupRatings[junglerId] || {}), ...ratings };
+    });
+  }
   return data;
 }
 
 // Reads saved data and games. Upgrades an old name-based save the first time this version runs, adds
-// default junglers released since the save was made, and deletes custom icons from older versions.
+// default junglers released since the save was made, gives saves from before skill groups the starter
+// groups, and deletes custom icons from older versions.
 export function loadSave(storage) {
   storage.remove(STORAGE_KEYS.obsoleteImages);
   storage.remove(STORAGE_KEYS.legacyImages);
@@ -184,7 +209,8 @@ export function loadSave(storage) {
     loaded = { ...migrateV1(legacy), migrated: true };
   }
 
-  const { data, added } = addNewDefaultJunglers(loaded.data);
+  const { data: withDefaults, added } = addNewDefaultJunglers(loaded.data);
+  const data = withSkillData(withDefaults);
   if (loaded.migrated || data !== loaded.data) storage.write(STORAGE_KEYS.data, data);
   return { ...loaded, data, history, addedJunglers: added };
 }

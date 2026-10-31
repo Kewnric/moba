@@ -1,7 +1,6 @@
 import { useCallback, useEffect, useMemo, useReducer, useState } from 'react';
 import { HEROES, HERO_BY_ID } from './data/heroes.js';
-import { HERO_META } from './data/stats.js';
-import { DEFAULT_DRAFT_PREFERENCES, findAllyJunglers, isDraftPreferences, normalizeDraftPreferences, resolveEnemyLanes } from './lib/draft.js';
+import { DEFAULT_DRAFT_PREFERENCES, findAllyJunglers, isDraftPreferences, normalizeDraftPreferences } from './lib/draft.js';
 import { dataReducer } from './lib/dataReducer.js';
 import { addGame, createGameRecord, mergeHistory, removeGame } from './lib/history.js';
 import { backupFileName, readBackupFile, serializeBackup } from './lib/backupFile.js';
@@ -13,31 +12,32 @@ import {
     loadSave,
     mergeSaveData,
 } from './lib/saveData.js';
-import { scoreJunglers } from './lib/scoring.js';
-import { MATCHUPS, SYNERGY } from './lib/stats.js';
+import { banSuggestions, scoreJunglers } from './lib/scoring.js';
+import { allEffectiveTiers, categoriesOf, makeGroupId, withSkillData } from './lib/skillGroups.js';
 import { createSafeStorage } from './lib/storage.js';
 import { downloadFile } from './lib/files.js';
 import { useDraft } from './hooks/useDraft.js';
 import { Icons } from './components/Icons.jsx';
-import GlobalTooltip from './components/GlobalTooltip.jsx';
 import { heroName } from './components/HeroAvatar.jsx';
-import { AddJunglerModal, ConfirmDialog, ImportDialog, QuickTipModal, TacticalNoteModal } from './components/Modals.jsx';
-import DraftLab from './views/DraftLab.jsx';
-import DatabaseEditor from './views/DatabaseEditor.jsx';
+import { AddJunglerModal, ConfirmDialog, CopyTierListModal, ImportDialog, MatchupDialog, NewGroupModal } from './components/Modals.jsx';
+import DraftView from './views/DraftView.jsx';
+import TierListView from './views/TierListView.jsx';
+import SkillGroupsView from './views/SkillGroupsView.jsx';
 import History from './views/History.jsx';
 import Settings from './views/Settings.jsx';
 
 const NAV_TABS = [
-    { id: 'draft', label: 'Draft', icon: Icons.Target, activeClass: 'bg-cyan-600' },
-    { id: 'editor', label: 'Ratings', icon: Icons.Edit3, activeClass: 'bg-purple-600' },
-    { id: 'history', label: 'History', icon: Icons.Chart, activeClass: 'bg-teal-600' },
-    { id: 'settings', label: 'Settings', icon: Icons.Sliders, activeClass: 'bg-emerald-600' },
+    { id: 'draft', label: 'Draft', icon: Icons.Target },
+    { id: 'tiers', label: 'Tier lists', icon: Icons.Grid },
+    { id: 'skills', label: 'Skills', icon: Icons.Layers },
+    { id: 'history', label: 'History', icon: Icons.Chart },
+    { id: 'settings', label: 'Settings', icon: Icons.Sliders },
 ];
 
 const WRITE_FAILED = "Your last change couldn't be saved because browser storage is full or blocked. Export a backup from Settings before closing this tab.";
 const NAMES_LISTED = 8;
+const ALL_HERO_IDS = HEROES.map((hero) => hero.id);
 
-const heroInfo = (heroId) => HERO_BY_ID[heroId] || null;
 const lanesOf = (heroId) => (HERO_BY_ID[heroId] ? HERO_BY_ID[heroId].lanes : []);
 
 const countOf = (count, noun) => `${count} ${noun}${count === 1 ? '' : 's'}`;
@@ -70,21 +70,20 @@ export default function App() {
     const [notice, setNotice] = useState(() => startupNotice(startup));
     const [draftPreferences, setDraftPreferences] = useState(() => normalizeDraftPreferences(
         createSafeStorage(() => window.localStorage).read(STORAGE_KEYS.preferences, DEFAULT_DRAFT_PREFERENCES, isDraftPreferences)));
-    const updateDraftPreferences = useCallback((changes) => setDraftPreferences(current => ({ ...current, ...changes })), []);
+    const updateDraftPreferences = useCallback((changes) => setDraftPreferences((current) => ({ ...current, ...changes })), []);
     const draftState = useDraft(draftPreferences, updateDraftPreferences);
 
     const [view, setView] = useState('draft');
-    const [onlyPool, setOnlyPool] = useState(false);
     const [editorJungler, setEditorJungler] = useState(null);
-    const [editingNote, setEditingNote] = useState(null); // { field: 'quickNote' | 'comment', enemyId, text }
+    const [editingGroupId, setEditingGroupId] = useState(null);
+    const [openMatchupId, setOpenMatchupId] = useState(null);
     const [isAddingJungler, setIsAddingJungler] = useState(false);
     const [newJunglerId, setNewJunglerId] = useState('');
+    const [isCopyingTiers, setIsCopyingTiers] = useState(false);
+    const [isAddingGroup, setIsAddingGroup] = useState(false);
     const [pendingImport, setPendingImport] = useState(null);
     const [confirmRequest, setConfirmRequest] = useState(null); // { title, message, confirmLabel, onConfirm }
     const [lastRecord, setLastRecord] = useState(null);
-    const [draggingSource, setDraggingSource] = useState(null);
-    const [tooltipState, setTooltipState] = useState({ visible: false, x: 0, top: 0, bottom: 0, content: null });
-    const hideTooltip = useCallback(() => setTooltipState(current => (current.visible ? { ...current, visible: false } : current)), []);
 
     const storage = useMemo(() => createSafeStorage(() => window.localStorage, ({ action, key, error }) => {
         console.warn(`JunglerOS could not ${action} "${key}"`, error);
@@ -108,13 +107,42 @@ export default function App() {
         const junglerId = editorJungler;
         setConfirmRequest({
             title: `Remove ${heroName(junglerId)}?`,
-            message: `${heroName(junglerId)} leaves your roster, along with all of their matchup ratings, notes and comfort rating.`,
+            message: `${heroName(junglerId)} leaves your roster, along with their whole tier list, notes and comfort rating.`,
             confirmLabel: 'Remove',
             onConfirm: () => {
                 dispatch({ type: 'removeJungler', junglerId });
                 setEditorJungler(null);
             },
         });
+    };
+
+    const handleClearTierList = () => {
+        const junglerId = editorJungler;
+        setConfirmRequest({
+            title: `Clear ${heroName(junglerId)}'s tier list?`,
+            message: 'Every hero and skill group rating for this jungler goes back to unrated. Your notes stay.',
+            confirmLabel: 'Clear',
+            onConfirm: () => dispatch({ type: 'clearTierList', junglerId }),
+        });
+    };
+
+    const handleDeleteGroup = (group) => {
+        setConfirmRequest({
+            title: `Delete ${group.name}?`,
+            message: 'The group goes away, and so do the tiers it gave your junglers. Heroes you rated directly keep their tier.',
+            confirmLabel: 'Delete',
+            onConfirm: () => {
+                dispatch({ type: 'deleteGroup', groupId: group.id });
+                setEditingGroupId(null);
+            },
+        });
+    };
+
+    const handleCreateGroup = ({ name, category }) => {
+        const id = makeGroupId(name.trim(), data.skillGroups || []);
+        dispatch({ type: 'addGroup', id, name, category });
+        setEditingGroupId(id);
+        setIsAddingGroup(false);
     };
 
     const handleExport = () => {
@@ -142,10 +170,11 @@ export default function App() {
     const applyImport = (mode) => {
         const incoming = pendingImport;
         const merging = mode === 'merge';
-        const nextData = addNewDefaultJunglers(merging ? mergeSaveData(data, incoming.data) : incoming.data).data;
+        const nextData = withSkillData(addNewDefaultJunglers(merging ? mergeSaveData(data, incoming.data) : incoming.data).data);
         dispatch({ type: 'load', data: nextData });
         setHistory(merging ? mergeHistory(history, incoming.history) : incoming.history);
         setEditorJungler(null);
+        setEditingGroupId(null);
         setPendingImport(null);
         const skipped = incoming.unmatched.length ? ` Skipped names that aren't heroes: ${listNames(incoming.unmatched)}.` : '';
         setNotice(`${merging ? 'Merged' : 'Restored'} ${countOf(incoming.data.junglers.length, 'jungler')}, ${countOf(countRatings(incoming.data.matchups), 'rating')} and ${countOf(incoming.history.length, 'game')} from ${incoming.fileName}.${skipped}`);
@@ -154,7 +183,7 @@ export default function App() {
     const handleReset = () => {
         setConfirmRequest({
             title: 'Reset JunglerOS?',
-            message: "This deletes your ratings, notes, roster, comfort, game history and settings from this browser. It can't be undone.",
+            message: "This deletes your tier lists, skill groups, notes, roster, comfort, game history and settings from this browser. It can't be undone.",
             confirmLabel: 'Reset everything',
             onConfirm: () => {
                 clearSave(storage);
@@ -168,145 +197,161 @@ export default function App() {
             title: 'Delete this game?',
             message: `The ${game.result === 'win' ? 'win' : 'loss'} with ${heroName(game.playedId)} will be removed from your history and records.`,
             confirmLabel: 'Delete',
-            onConfirm: () => setHistory(current => removeGame(current, game.id)),
+            onConfirm: () => setHistory((current) => removeGame(current, game.id)),
         });
     };
-
-    const saveNote = () => {
-        const type = editingNote.field === 'quickNote' ? 'setQuickNote' : 'setComment';
-        dispatch({ type, junglerId: editorJungler, enemyId: editingNote.enemyId, text: editingNote.text });
-        setEditingNote(null);
-    };
-
-    const handleDragStart = (e, heroId, source, index = null) => {
-        e.dataTransfer.setData('hero', heroId);
-        e.dataTransfer.setData('source', source);
-        if (index !== null) e.dataTransfer.setData('slotIndex', index);
-        setDraggingSource(source);
-    };
-    const handleDragEnd = () => setDraggingSource(null);
 
     const { draft } = draftState;
     const comfort = useMemo(() => data.comfort || {}, [data.comfort]);
     const hasPool = Object.keys(comfort).length > 0;
-    const enemyLanes = useMemo(() => resolveEnemyLanes(draft, lanesOf), [draft]);
     const allyJunglers = useMemo(() => findAllyJunglers(draft, lanesOf), [draft]);
+    const tiersByJungler = useMemo(() => allEffectiveTiers(data), [data]);
+    const takenIds = useMemo(() => [...draft.ally, ...draft.allyBans, ...draft.enemyBans].filter(Boolean), [draft]);
 
     const scoringInputs = useMemo(() => ({
         junglerIds: data.junglers,
-        enemies: draft.enemy.map((heroId, index) => (heroId ? { heroId, lane: enemyLanes[index] } : null)).filter(Boolean),
-        allyIds: draft.ally.filter(Boolean),
-        unavailableIds: [...draft.allyBans, ...draft.enemyBans].filter(Boolean),
-        ratings: data.matchups,
+        enemyIds: draft.enemy.filter(Boolean),
+        enemyJunglerId: draft.enemyJungler || null,
+        unavailableIds: takenIds,
+        tiersByJungler,
+        matchups: data.matchups,
         comfort,
-        onlyPool: onlyPool && hasPool,
-        matchupStats: MATCHUPS,
-        synergyStats: SYNERGY,
-        meta: HERO_META,
-        heroInfo,
-        ratingSource: draftPreferences.ratingSource,
-    }), [data, draft, enemyLanes, onlyPool, hasPool, comfort, draftPreferences.ratingSource]);
+        comfortWeight: draftPreferences.comfortWeight,
+        onlyPool: draftPreferences.onlyPool && hasPool,
+        heroIds: ALL_HERO_IDS,
+    }), [data.junglers, data.matchups, draft, takenIds, tiersByJungler, comfort, draftPreferences.comfortWeight, draftPreferences.onlyPool, hasPool]);
 
     const scoring = useMemo(() => scoreJunglers(scoringInputs), [scoringInputs]);
+
+    const banIdeas = useMemo(() => banSuggestions({
+        junglerIds: data.junglers,
+        tiersByJungler,
+        comfort,
+        takenIds: [...draft.enemy, ...takenIds].filter(Boolean),
+    }), [data.junglers, tiersByJungler, comfort, draft.enemy, takenIds]);
 
     // Any edit to the draft means the saved result no longer describes it.
     useEffect(() => { setLastRecord(null); }, [draft]);
 
     const recordResult = ({ result, playedId }) => {
-        const withYourSlotOpen = scoreJunglers({ ...scoringInputs, allyIds: scoringInputs.allyIds.filter(id => id !== playedId) });
+        const withYourSlotOpen = scoreJunglers({ ...scoringInputs, unavailableIds: scoringInputs.unavailableIds.filter((id) => id !== playedId) });
         const record = createGameRecord({
-            draft: { ...draft, enemyLanes },
+            draft,
             result,
             playedId,
-            topPickId: withYourSlotOpen.ranked.length ? withYourSlotOpen.ranked[0].id : null,
+            topPickId: withYourSlotOpen.top ? withYourSlotOpen.top.id : null,
         });
-        setHistory(current => addGame(current, record));
+        setHistory((current) => addGame(current, record));
         setLastRecord(record);
     };
 
     const undoRecord = () => {
         if (!lastRecord) return;
-        setHistory(current => removeGame(current, lastRecord.id));
+        setHistory((current) => removeGame(current, lastRecord.id));
         setLastRecord(null);
+    };
+
+    // Editing a tier from the stat sheet: tapping your own rating again removes it.
+    const setTierFromSheet = (junglerId) => (matchup, tier) => {
+        if (matchup.source === 'hero' && matchup.tier === tier) dispatch({ type: 'clearTier', junglerId, enemyId: matchup.enemyId });
+        else dispatch({ type: 'setTier', junglerId, enemyId: matchup.enemyId, tier });
     };
 
     const stats = useMemo(() => ({
         junglerCount: data.junglers.length,
         matchupCount: countRatings(data.matchups),
+        groupCount: (data.skillGroups || []).length,
+        groupRatingCount: Object.values(data.groupRatings || {}).reduce((sum, ratings) => sum + Object.keys(ratings).length, 0),
         gameCount: history.length,
     }), [data, history]);
 
     const addJunglerOptions = useMemo(
-        () => HEROES.filter(hero => !data.junglers.includes(hero.id)).map(hero => ({ id: hero.id, name: hero.name })),
+        () => HEROES.filter((hero) => !data.junglers.includes(hero.id)).map((hero) => ({ id: hero.id, name: hero.name })),
         [data.junglers]
     );
 
-    return (
-        <div className="h-dvh w-full flex flex-col bg-[#0f172a] text-gray-100">
-            <GlobalTooltip {...tooltipState} onHide={hideTooltip} />
+    const copyOptions = data.junglers
+        .filter((id) => id !== editorJungler)
+        .map((id) => ({ id, name: heroName(id), rated: Object.keys(tiersByJungler[id] || {}).length }))
+        .sort((a, b) => (b.rated - a.rated) || a.name.localeCompare(b.name));
 
-            <nav className="h-14 lg:h-16 bg-slate-900/80 backdrop-blur border-b border-white/10 flex items-center justify-between gap-2 px-2 sm:px-3 lg:px-8 z-30 shrink-0">
-                <div className="flex items-center gap-2 lg:gap-4 min-w-0">
-                    <div className="bg-cyan-500/10 p-1.5 lg:p-2 rounded-lg border border-cyan-500/30 shrink-0"><Icons.Swords size={20} className="text-cyan-400" /></div>
-                    <div className="hidden md:block"><h1 className="text-lg lg:text-xl font-bold text-white tracking-wider">JUNGLER<span className="text-cyan-400">OS</span></h1><div className="hidden lg:block text-[10px] text-gray-500 tracking-[0.2em] uppercase">Tactical Counter Engine</div></div>
+    const openNote = openMatchupId && editorJungler ? (data.matchups[editorJungler] || {})[openMatchupId] || {} : null;
+
+    return (
+        <div className="app-tone h-dvh w-full flex flex-col bg-ink text-fg">
+            <nav aria-label="Main" className="order-last lg:order-first shrink-0 z-30 bg-ink-2 border-t lg:border-t-0 lg:border-b border-line flex items-stretch lg:items-center lg:gap-6 lg:px-5 lg:h-14 pb-[env(safe-area-inset-bottom)]">
+                <div className="hidden lg:flex items-center gap-2.5">
+                    <span className="pentagon w-7 h-7 bg-accent" aria-hidden="true" />
+                    <span className="display text-2xl tracking-wide">Jungler<span className="text-accent">OS</span></span>
                 </div>
-                <div className="flex bg-slate-800 p-1 rounded-lg overflow-x-auto scrollbar-hide">
-                    {NAV_TABS.map(({ id, label, icon: TabIcon, activeClass }) => (
+                <div className="flex flex-1 lg:flex-none lg:gap-1 lg:h-full">
+                    {NAV_TABS.map(({ id, label, icon: TabIcon }) => (
                         <button key={id} type="button" aria-current={view === id ? 'page' : undefined} onClick={() => setView(id)}
-                            className={`shrink-0 px-1.5 sm:px-3 lg:px-5 py-1 sm:py-2 rounded-md text-[9px] sm:text-[11px] lg:text-xs font-bold uppercase sm:tracking-wide transition-all flex flex-col sm:flex-row items-center gap-0.5 sm:gap-1.5 lg:gap-2 ${view === id ? `${activeClass} text-white shadow-lg` : 'text-gray-400 hover:text-white'}`}>
-                            <TabIcon size={14} /><span>{label}</span>
+                            className={`relative flex-1 lg:flex-none min-h-[3.25rem] lg:min-h-0 px-1 lg:px-4 flex flex-col lg:flex-row items-center justify-center gap-0.5 lg:gap-2 label transition-colors ${view === id ? 'text-accent' : 'text-fg-muted hover:text-fg'}`}>
+                            <TabIcon size={17} />
+                            <span className="text-[12px] lg:text-[14px]">{label}</span>
+                            {view === id && <span className="absolute top-0 lg:top-auto lg:bottom-0 inset-x-0 h-[3px] bg-accent" aria-hidden="true" />}
                         </button>
                     ))}
                 </div>
             </nav>
 
             {notice && (
-                <div role="alert" className="shrink-0 bg-amber-500/10 border-b border-amber-500/30 text-amber-200 text-xs px-3 lg:px-8 py-2 flex items-center justify-between gap-4">
-                    <span className="flex items-center gap-2"><Icons.Info size={14} className="shrink-0" /> {notice}</span>
-                    <button type="button" onClick={() => setNotice(null)} className="text-amber-300 hover:text-white font-bold uppercase tracking-wide shrink-0">Dismiss</button>
+                <div role="alert" className="shrink-0 border-b border-accent bg-ink-3 text-fg text-sm px-3 lg:px-5 py-2 flex items-center justify-between gap-4">
+                    <span className="flex items-center gap-2"><Icons.Info size={15} className="shrink-0 text-accent" /> {notice}</span>
+                    <button type="button" onClick={() => setNotice(null)} className="btn btn-quiet !min-h-[1.75rem] shrink-0">Dismiss</button>
                 </div>
             )}
 
             <main className="flex-1 flex min-h-0 overflow-hidden relative">
                 {view === 'draft' && (
-                    <DraftLab
+                    <DraftView
                         draftState={draftState}
-                        enemyLanes={enemyLanes}
+                        enemyOnly={draftPreferences.enemyOnly}
                         defaultBanCount={draftPreferences.bansPerTeam}
-                        allyJunglers={allyJunglers}
-                        ratingSource={draftPreferences.ratingSource}
-                        setRatingSource={(source) => updateDraftPreferences({ ratingSource: source })}
+                        comfortWeight={draftPreferences.comfortWeight}
                         scoring={scoring}
-                        onlyPool={onlyPool}
-                        setOnlyPool={setOnlyPool}
+                        skillGroups={data.skillGroups || []}
+                        banIdeas={banIdeas}
+                        allyJunglers={draftPreferences.enemyOnly ? [] : allyJunglers}
+                        onlyPool={draftPreferences.onlyPool}
+                        setOnlyPool={(on) => updateDraftPreferences({ onlyPool: on })}
                         hasPool={hasPool}
-                        setTooltip={setTooltipState}
-                        onOpenDatabase={() => setView('editor')}
-                        resultRecorder={{ junglerIds: data.junglers, lastRecord, onRecord: recordResult, onUndoRecord: undoRecord, onNewDraft: draftState.newDraft }}
+                        onSetTier={setTierFromSheet}
+                        onSetComfort={(junglerId, level) => dispatch({ type: 'setComfort', junglerId, comfort: level })}
+                        onOpenTierLists={() => setView('tiers')}
+                        resultLog={{ lastRecord, onRecord: recordResult, onUndoRecord: undoRecord, onNewDraft: draftState.newDraft }}
                     />
                 )}
-                {view === 'editor' && (
-                    <DatabaseEditor
-                        junglers={data.junglers}
-                        matchups={data.matchups}
-                        comfort={comfort}
-                        editorJungler={editorJungler}
-                        setEditorJungler={setEditorJungler}
+                {view === 'tiers' && (
+                    <TierListView
+                        data={data}
+                        tiersByJungler={tiersByJungler}
+                        junglerId={editorJungler}
+                        setJunglerId={setEditorJungler}
                         dispatch={dispatch}
                         onAddJungler={() => setIsAddingJungler(true)}
-                        onDeleteJungler={handleDeleteJungler}
-                        onEditQuickNote={(enemyId, text) => setEditingNote({ field: 'quickNote', enemyId, text })}
-                        onEditComment={(enemyId, text) => setEditingNote({ field: 'comment', enemyId, text })}
-                        setTooltip={setTooltipState}
-                        draggingSource={draggingSource}
-                        onDragStart={handleDragStart}
-                        onDragEnd={handleDragEnd}
+                        onRemoveJungler={handleDeleteJungler}
+                        onCopyTierList={() => setIsCopyingTiers(true)}
+                        onClearTierList={handleClearTierList}
+                        onOpenMatchup={setOpenMatchupId}
+                        onOpenSkills={() => setView('skills')}
+                    />
+                )}
+                {view === 'skills' && (
+                    <SkillGroupsView
+                        data={data}
+                        selectedId={editingGroupId}
+                        setSelectedId={setEditingGroupId}
+                        dispatch={dispatch}
+                        onNewGroup={() => setIsAddingGroup(true)}
+                        onDeleteGroup={handleDeleteGroup}
                     />
                 )}
                 {view === 'history' && (
                     <History
                         history={history}
-                        ratings={data.matchups}
+                        tiersByJungler={tiersByJungler}
                         onDeleteGame={requestDeleteGame}
                         onSetTier={(junglerId, enemyId, tier) => dispatch({ type: 'setTier', junglerId, enemyId, tier })}
                         onOpenDraft={() => setView('draft')}
@@ -316,6 +361,7 @@ export default function App() {
                     <Settings
                         preferences={draftPreferences}
                         onPreferencesChange={updateDraftPreferences}
+                        onEnemyOnlyChange={draftState.setEnemyOnly}
                         stats={stats}
                         onExport={handleExport}
                         onImport={handleImport}
@@ -324,14 +370,32 @@ export default function App() {
                 )}
             </main>
 
-            {editingNote && editingNote.field === 'comment' && (
-                <TacticalNoteModal heroName={heroName(editingNote.enemyId)} text={editingNote.text} onChange={(text) => setEditingNote({ ...editingNote, text })} onCancel={() => setEditingNote(null)} onSave={saveNote} />
-            )}
-            {editingNote && editingNote.field === 'quickNote' && (
-                <QuickTipModal heroName={heroName(editingNote.enemyId)} text={editingNote.text} onChange={(text) => setEditingNote({ ...editingNote, text })} onCancel={() => setEditingNote(null)} onSave={saveNote} />
+            {openMatchupId && editorJungler && (
+                <MatchupDialog
+                    key={`${editorJungler}|${openMatchupId}`}
+                    junglerName={heroName(editorJungler)}
+                    enemyName={heroName(openMatchupId)}
+                    enemyId={openMatchupId}
+                    rating={(tiersByJungler[editorJungler] || {})[openMatchupId] || null}
+                    note={openNote}
+                    onSetTier={(tier) => dispatch({ type: 'setTier', junglerId: editorJungler, enemyId: openMatchupId, tier })}
+                    onClearTier={() => dispatch({ type: 'clearTier', junglerId: editorJungler, enemyId: openMatchupId })}
+                    onSaveNotes={({ quickNote, comment }) => {
+                        dispatch({ type: 'setQuickNote', junglerId: editorJungler, enemyId: openMatchupId, text: quickNote });
+                        dispatch({ type: 'setComment', junglerId: editorJungler, enemyId: openMatchupId, text: comment });
+                    }}
+                    onClose={() => setOpenMatchupId(null)}
+                />
             )}
             {isAddingJungler && (
                 <AddJunglerModal options={addJunglerOptions} value={newJunglerId} onChange={setNewJunglerId} onCancel={() => { setIsAddingJungler(false); setNewJunglerId(''); }} onAdd={handleAddJungler} />
+            )}
+            {isCopyingTiers && editorJungler && (
+                <CopyTierListModal junglerName={heroName(editorJungler)} options={copyOptions} onCancel={() => setIsCopyingTiers(false)}
+                    onCopy={(fromId) => { dispatch({ type: 'copyTierList', fromId, toId: editorJungler }); setIsCopyingTiers(false); }} />
+            )}
+            {isAddingGroup && (
+                <NewGroupModal existingCategories={categoriesOf(data.skillGroups || []).map(({ category }) => category)} onCreate={handleCreateGroup} onCancel={() => setIsAddingGroup(false)} />
             )}
             {pendingImport && (
                 <ImportDialog
@@ -340,6 +404,7 @@ export default function App() {
                         junglers: pendingImport.data.junglers.length,
                         ratings: countRatings(pendingImport.data.matchups),
                         comfort: Object.keys(pendingImport.data.comfort || {}).length,
+                        groups: (pendingImport.data.skillGroups || []).length,
                         games: pendingImport.history.length,
                         skippedIcons: pendingImport.skippedIcons,
                         unmatched: pendingImport.unmatched,

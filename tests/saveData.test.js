@@ -108,7 +108,10 @@ test('normalizeImport rejects files that are not JunglerOS backups', () => {
 test('loadSave returns defaults when nothing is saved', () => {
   const { store } = storageWith({});
   const result = loadSave(store);
-  assert.deepEqual(result.data, { version: 2, junglers: DEFAULT_JUNGLERS, matchups: {}, knownDefaults: DEFAULT_JUNGLERS });
+  assert.deepEqual(result.data.junglers, DEFAULT_JUNGLERS);
+  assert.deepEqual(result.data.matchups, {});
+  assert.deepEqual(result.data.knownDefaults, DEFAULT_JUNGLERS);
+  assert.deepEqual(result.data.skillGroups.map((group) => group.id), ['blink', 'dash', 'iframes', 'close-burst']);
   assert.equal('images' in result, false);
   assert.deepEqual(result.history, []);
   assert.equal(result.migrated, false);
@@ -161,12 +164,33 @@ test('loadSave upgrades an old save once and keeps the old keys', () => {
 });
 
 test('loadSave prefers the version 2 save over old keys', () => {
-  const saved = { version: 2, junglers: ['fanny'], matchups: {}, knownDefaults: DEFAULT_JUNGLERS };
+  const saved = { version: 2, junglers: ['fanny'], matchups: { fanny: { miya: { tier: 'A' } } }, knownDefaults: DEFAULT_JUNGLERS };
   const { store } = storageWith({
     [STORAGE_KEYS.data]: JSON.stringify(saved),
     [STORAGE_KEYS.legacyJunglers]: JSON.stringify(['Ling']),
   });
-  assert.deepEqual(loadSave(store).data, saved);
+  const { data } = loadSave(store);
+  assert.deepEqual(data.junglers, ['fanny']);
+  assert.deepEqual(data.matchups, saved.matchups);
+});
+
+test('loadSave keeps your ratings and adds the starter skill groups to an older save', () => {
+  const saved = { version: 2, junglers: ['fanny'], matchups: { fanny: { miya: { tier: 'A', comment: 'Wait' } } }, comfort: { fanny: 4 }, knownDefaults: DEFAULT_JUNGLERS };
+  const { raw, store } = storageWith({ [STORAGE_KEYS.data]: JSON.stringify(saved) });
+  const { data } = loadSave(store);
+  assert.deepEqual(data.matchups, saved.matchups);
+  assert.deepEqual(data.comfort, saved.comfort);
+  assert.equal(data.skillGroups.length, 4);
+  assert.deepEqual(JSON.parse(raw.getItem(STORAGE_KEYS.data)), data);
+});
+
+test('loadSave keeps a save whose skill groups are broken, dropping only the broken part', () => {
+  const saved = { version: 2, junglers: ['fanny'], matchups: {}, knownDefaults: DEFAULT_JUNGLERS, skillGroups: [{ id: 'x' }, { id: 'blink', name: 'Blink', category: 'Movement', heroIds: ['harley', 'nobody'] }], groupRatings: { fanny: { blink: 'C', gone: 'S' } } };
+  const { store } = storageWith({ [STORAGE_KEYS.data]: JSON.stringify(saved) });
+  const { data } = loadSave(store);
+  assert.deepEqual(data.junglers, ['fanny']);
+  assert.deepEqual(data.skillGroups, [{ id: 'blink', name: 'Blink', category: 'Movement', heroIds: ['harley'] }]);
+  assert.deepEqual(data.groupRatings, { fanny: { blink: 'C' } });
 });
 
 test('loadSave ignores a version 2 save with the wrong shape', () => {

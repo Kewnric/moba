@@ -1,260 +1,229 @@
 import { test } from 'vitest';
 import assert from 'node:assert/strict';
-import { LANES } from '../src/data/heroes.js';
-import { scoreJunglers, SCORE_PARTS, MAX_RISK } from '../src/lib/scoring.js';
+import { banSuggestions, comfortScore, DEFAULT_COMFORT_WEIGHT, graphOptions, riskLevel, scoreJunglers, sortEntries } from '../src/lib/scoring.js';
 
-const HERO_INFO = {
-  ling: { roles: ['Assassin'], specialities: ['Chase', 'Burst'] },
-  fanny: { roles: ['Assassin'], specialities: ['Chase', 'Finisher'] },
-  karina: { roles: ['Assassin'], specialities: ['Finisher', 'Magic Damage'] },
-  baxia: { roles: ['Tank'], specialities: ['Support', 'Damage'] },
-  saber: { roles: ['Assassin'], specialities: ['Charge', 'Finisher'] },
-  tigreal: { roles: ['Tank'], specialities: ['Crowd Control', 'Initiator'] },
-  miya: { roles: ['Marksman'], specialities: ['Damage'] },
-  nana: { roles: ['Mage'], specialities: ['Poke', 'Crowd Control'] },
-  layla: { roles: ['Marksman'], specialities: ['Damage'] },
-};
+const HERO_IDS = ['ling', 'fanny', 'karina', 'tigreal', 'miya', 'nana', 'saber', 'layla'];
 
 const context = (overrides = {}) => ({
   junglerIds: ['ling', 'fanny'],
-  enemies: [],
-  allyIds: [],
+  enemyIds: [],
+  enemyJunglerId: null,
   unavailableIds: [],
-  ratings: {},
+  tiersByJungler: {},
+  matchups: {},
   comfort: {},
-  onlyPool: false,
-  matchupStats: {},
-  meta: {},
-  heroInfo: (heroId) => HERO_INFO[heroId] || null,
+  comfortWeight: DEFAULT_COMFORT_WEIGHT,
+  heroIds: HERO_IDS,
   ...overrides,
 });
 
-const enemy = (heroId, lane = null) => ({ heroId, lane });
+const mine = (entries) => Object.fromEntries(Object.entries(entries).map(([heroId, tier]) => [heroId, { tier, source: 'hero' }]));
 const byId = (result) => Object.fromEntries(result.ranked.map((entry) => [entry.id, entry]));
 const ids = (result) => result.ranked.map((entry) => entry.id);
-const near = (actual, expected) => assert.ok(Math.abs(actual - expected) < 1e-6, `${actual} is not ${expected}`);
 
-test('score parts add up to 100 and a jungler with no information scores 50', () => {
-  assert.deepEqual(SCORE_PARTS, { matchup: 45, teamFit: 20, comfort: 20, meta: 15 });
-  assert.equal(MAX_RISK, 10);
-  const ling = byId(scoreJunglers(context())).ling;
-  assert.deepEqual(ling.parts, { matchup: 22.5, teamFit: 10, comfort: 10, meta: 7.5, risk: 0 });
+test('a viability score uses only your tiers and comfort, 70/30 by default', () => {
+  const ling = byId(scoreJunglers(context({
+    enemyIds: ['tigreal', 'miya'],
+    tiersByJungler: { ling: mine({ tigreal: 'S', miya: 'C' }) },
+    comfort: { ling: 5 },
+  }))).ling;
+  assert.equal(ling.matchupScore, 62.5);
+  assert.equal(ling.comfortScore, 100);
+  assert.equal(ling.total, 73.8);
+  assert.equal(ling.grade, 'A');
+});
+
+test('all-S matchups on your main score exactly 100, and all-D on a hero you rarely play score 0', () => {
+  const result = byId(scoreJunglers(context({
+    enemyIds: ['tigreal', 'miya'],
+    tiersByJungler: { ling: mine({ tigreal: 'S', miya: 'S' }), fanny: mine({ tigreal: 'D', miya: 'D' }) },
+    comfort: { ling: 5, fanny: 1 },
+  })));
+  assert.equal(result.ling.total, 100);
+  assert.equal(result.fanny.total, 0);
+  assert.equal(result.ling.grade, 'S');
+  assert.equal(result.fanny.grade, 'D');
+});
+
+test('an unrated matchup and an unset comfort both count as the middle, and say so', () => {
+  const ling = byId(scoreJunglers(context({ enemyIds: ['tigreal'] }))).ling;
   assert.equal(ling.total, 50);
+  assert.equal(ling.comfort, null);
+  assert.equal(ling.matchups[0].tier, null);
+  assert.equal(ling.matchups[0].points, 50);
+  assert.deepEqual(ling.coverage, { rated: 0, total: 1 });
 });
 
-test('with no enemy picks it ranks early picks but recommends nobody', () => {
-  const result = scoreJunglers(context());
-  assert.equal(result.mode, 'blind');
-  assert.equal(result.recommended, null);
-  assert.equal(result.ranked.length, 2);
-});
-
-test('never ranks a hero that either team picked or anyone banned', () => {
-  const result = scoreJunglers(context({ junglerIds: ['ling', 'fanny', 'karina', 'baxia'], enemies: [enemy('fanny')], allyIds: ['baxia'], unavailableIds: ['karina'] }));
-  assert.equal(result.mode, 'counter');
-  assert.deepEqual(ids(result), ['ling']);
-});
-
-test('your tier rating counts fully against an enemy', () => {
-  const ling = byId(scoreJunglers(context({ enemies: [enemy('tigreal')], ratings: { ling: { tigreal: { tier: 'S' } } } }))).ling;
-  near(ling.parts.matchup, 45 * 0.75);
-  assert.deepEqual(ling.coverage, { rated: 1, known: 1, total: 1 });
-  assert.equal(ling.details.matchups[0].source, 'you');
-});
-
-test('matchup details include your quick tip and long note', () => {
-  const ratings = { ling: { tigreal: { tier: 'A', quickNote: 'Kite his ult', comment: 'Wait for his ult before diving' } } };
-  const [matchup] = byId(scoreJunglers(context({ enemies: [enemy('tigreal')], ratings }))).ling.details.matchups;
-  assert.equal(matchup.quickNote, 'Kite his ult');
-  assert.equal(matchup.comment, 'Wait for his ult before diving');
-});
-
-test('win-rate stats fill in matchups you have not rated, at half weight', () => {
-  const ling = byId(scoreJunglers(context({ enemies: [enemy('tigreal')], matchupStats: { ling: { tigreal: 5 } } }))).ling;
-  near(ling.parts.matchup, 45 * (1 / 1.5));
-  assert.deepEqual(ling.coverage, { rated: 0, known: 1, total: 1 });
-  assert.equal(ling.details.matchups[0].source, 'stats');
-  assert.equal(ling.details.matchups[0].delta, 5);
-});
-
-test('your rating replaces the stats for the same matchup', () => {
-  const ling = byId(scoreJunglers(context({
-    enemies: [enemy('tigreal')],
-    ratings: { ling: { tigreal: { tier: 'D' } } },
-    matchupStats: { ling: { tigreal: 5 } },
-  }))).ling;
-  near(ling.parts.matchup, 45 * 0.25);
-  assert.equal(ling.details.matchups[0].source, 'you');
-});
-
-test('the enemy jungler counts one and a half times', () => {
-  const ling = byId(scoreJunglers(context({
-    enemies: [enemy('tigreal', LANES.ROAM), enemy('saber', LANES.JUNGLE)],
-    ratings: { ling: { tigreal: { tier: 'D' }, saber: { tier: 'S' } } },
-  }))).ling;
-  near(ling.parts.matchup, 45 * (2 / 3.5));
-  assert.deepEqual(ling.details.matchups.map((m) => m.weight), [1, 1.5]);
-  assert.equal(ling.total, 53.2);
-});
-
-test('a jungler is recommended once half the enemies have a rating or stats', () => {
+test('a jungler with few ratings is not pushed below better-scoring ones', () => {
   const result = scoreJunglers(context({
-    enemies: [enemy('tigreal'), enemy('miya'), enemy('nana')],
-    ratings: { fanny: { tigreal: { tier: 'S' } } },
-    matchupStats: { ling: { tigreal: 2, miya: 2 } },
+    enemyIds: ['tigreal', 'miya', 'nana'],
+    tiersByJungler: { fanny: mine({ tigreal: 'S' }), ling: mine({ tigreal: 'D', miya: 'D', nana: 'D' }) },
   }));
-  const entries = byId(result);
-  assert.equal(entries.ling.confident, true);
-  assert.equal(entries.fanny.confident, false);
-  assert.ok(entries.fanny.total > entries.ling.total);
-  assert.deepEqual(ids(result), ['ling', 'fanny']);
-  assert.equal(result.recommended.id, 'ling');
+  assert.deepEqual(ids(result), ['fanny', 'ling']);
 });
 
-test('team fit stays neutral until two allies are picked', () => {
-  const entries = byId(scoreJunglers(context({ junglerIds: ['ling', 'baxia'], allyIds: ['miya'] })));
-  assert.equal(entries.ling.parts.teamFit, 10);
-  assert.equal(entries.baxia.parts.teamFit, 10);
+test('the comfort weight is yours to change', () => {
+  const inputs = { enemyIds: ['tigreal'], tiersByJungler: { ling: mine({ tigreal: 'D' }) }, comfort: { ling: 5 } };
+  assert.equal(byId(scoreJunglers(context({ ...inputs, comfortWeight: 0 }))).ling.total, 0);
+  assert.equal(byId(scoreJunglers(context({ ...inputs, comfortWeight: 50 }))).ling.total, 50);
 });
 
-test('team fit rewards a frontline your team is missing', () => {
-  const entries = byId(scoreJunglers(context({ junglerIds: ['ling', 'baxia'], allyIds: ['miya', 'nana'] })));
-  near(entries.baxia.parts.teamFit, 20 * 0.75);
-  near(entries.ling.parts.teamFit, 20 * 0.35);
-  assert.ok(entries.baxia.details.teamFit.reasons.some((reason) => /frontline/i.test(reason)));
+test('open counters are shown as risk and never change the score', () => {
+  const quiet = byId(scoreJunglers(context({ enemyIds: ['tigreal'], tiersByJungler: { ling: mine({ tigreal: 'A' }) } }))).ling;
+  const risky = byId(scoreJunglers(context({ enemyIds: ['tigreal'], tiersByJungler: { ling: mine({ tigreal: 'A', saber: 'D', nana: 'D', layla: 'C' }) } }))).ling;
+  assert.equal(risky.total, quiet.total);
+  assert.deepEqual(risky.risk.openCounters, ['nana', 'saber']);
+  assert.deepEqual(risky.risk.openUnfavored, ['layla']);
+  assert.equal(risky.risk.level, 'low');
+  assert.equal(risky.risk.picksLeft, 4);
 });
 
-test('team fit rewards magic damage when your team has none', () => {
-  const entries = byId(scoreJunglers(context({ junglerIds: ['ling', 'karina'], allyIds: ['tigreal', 'miya'] })));
-  near(entries.karina.parts.teamFit, 20 * 0.75);
-  near(entries.ling.parts.teamFit, 20 * 0.4);
-  assert.ok(entries.karina.details.teamFit.reasons.some((reason) => /magic/i.test(reason)));
+test('risk skips counters that are already picked or banned, and lists the ones you are facing', () => {
+  const ling = byId(scoreJunglers(context({
+    enemyIds: ['saber'],
+    unavailableIds: ['nana'],
+    tiersByJungler: { ling: mine({ saber: 'D', nana: 'D', layla: 'D' }) },
+  }))).ling;
+  assert.deepEqual(ling.risk.openCounters, ['layla']);
+  assert.deepEqual(ling.risk.facing, ['saber']);
 });
 
-test('team fit adds synergy with a teammate already picked', () => {
-  const ling = byId(scoreJunglers(context({ junglerIds: ['ling'], allyIds: ['angela'], synergyStats: { ling: { angela: 1.5 } } }))).ling;
-  near(ling.parts.teamFit, 20 * 0.625);
-  assert.deepEqual(ling.details.teamFit.synergy, [{ allyId: 'angela', delta: 1.5 }]);
+test('once all five enemies are in there is nothing left to be counter-picked by', () => {
+  const ling = byId(scoreJunglers(context({
+    enemyIds: ['tigreal', 'miya', 'nana', 'saber', 'layla'],
+    tiersByJungler: { ling: mine({ karina: 'D', tigreal: 'D' }) },
+  }))).ling;
+  assert.deepEqual(ling.risk.openCounters, []);
+  assert.equal(ling.risk.level, 'none');
+  assert.equal(ling.risk.picksLeft, 0);
+  assert.deepEqual(ling.risk.facing, ['tigreal']);
 });
 
-test('synergy is capped, so a clashing teammate costs at most a quarter of team fit', () => {
-  const ling = byId(scoreJunglers(context({ junglerIds: ['ling'], allyIds: ['hayabusa'], synergyStats: { ling: { hayabusa: -16 } } }))).ling;
-  near(ling.parts.teamFit, 20 * 0.25);
-  assert.deepEqual(ling.details.teamFit.synergy, [{ allyId: 'hayabusa', delta: -16 }]);
+test('riskLevel steps from none to high', () => {
+  assert.deepEqual([0, 1, 3, 4, 8, 9].map(riskLevel), ['none', 'low', 'low', 'medium', 'medium', 'high']);
 });
 
-test('synergy averages across teammates on top of team composition', () => {
-  const ling = byId(scoreJunglers(context({ junglerIds: ['ling'], allyIds: ['tigreal', 'nana'], synergyStats: { ling: { tigreal: 3, nana: -1 } } }))).ling;
-  near(ling.parts.teamFit, 20 * (0.5 + (1 / 3) * 0.25));
-  assert.ok(ling.details.teamFit.reasons.some((reason) => /already has/i.test(reason)));
+test('a marked enemy jungler counts one and a half times', () => {
+  const ling = byId(scoreJunglers(context({
+    enemyIds: ['tigreal', 'saber'],
+    enemyJunglerId: 'saber',
+    tiersByJungler: { ling: mine({ tigreal: 'D', saber: 'S' }) },
+  }))).ling;
+  assert.equal(ling.matchupScore, 60);
+  assert.deepEqual(ling.matchups.map((matchup) => matchup.weight), [1, 1.5]);
 });
 
-test('team fit lists no synergy without stats for your teammates', () => {
-  const ling = byId(scoreJunglers(context({ junglerIds: ['ling'], allyIds: ['angela'] }))).ling;
-  assert.deepEqual(ling.details.teamFit.synergy, []);
-  assert.equal(ling.parts.teamFit, 10);
+test('no jungler weight applies until you mark one', () => {
+  const ling = byId(scoreJunglers(context({
+    enemyIds: ['tigreal', 'saber'],
+    tiersByJungler: { ling: mine({ tigreal: 'D', saber: 'S' }) },
+  }))).ling;
+  assert.equal(ling.matchupScore, 50);
 });
 
-test('comfort turns a 1 to 5 rating into up to 20 points', () => {
-  const entries = byId(scoreJunglers(context({ junglerIds: ['ling', 'fanny', 'karina'], comfort: { ling: 5, fanny: 1 } })));
-  assert.equal(entries.ling.parts.comfort, 20);
-  assert.equal(entries.fanny.parts.comfort, 0);
-  assert.equal(entries.karina.parts.comfort, 10);
+test('matchups carry where a rating came from and your notes', () => {
+  const [fromGroup, fromHero] = byId(scoreJunglers(context({
+    enemyIds: ['tigreal', 'miya'],
+    tiersByJungler: { ling: { tigreal: { tier: 'C', source: 'group', groupId: 'blink', groupName: 'Blink skills' }, miya: { tier: 'A', source: 'hero' } } },
+    matchups: { ling: { miya: { tier: 'A', quickNote: 'Dodge arrows', comment: 'Wait for ult' } } },
+  }))).ling.matchups;
+  assert.equal(fromGroup.source, 'group');
+  assert.equal(fromGroup.groupName, 'Blink skills');
+  assert.equal(fromHero.source, 'hero');
+  assert.equal(fromHero.quickNote, 'Dodge arrows');
+  assert.equal(fromHero.comment, 'Wait for ult');
+});
+
+test('with no enemy picks it ranks by your ratings against every open hero, and keeps no top pick hidden', () => {
+  const result = scoreJunglers(context({
+    tiersByJungler: { ling: mine({ tigreal: 'S', miya: 'S', nana: 'S', saber: 'S', layla: 'S', karina: 'S', fanny: 'S' }) },
+    comfort: { ling: 3, fanny: 3 },
+  }));
+  assert.equal(result.mode, 'blind');
+  assert.equal(byId(result).ling.matchupScore, 100);
+  assert.equal(byId(result).fanny.matchupScore, 50);
+  assert.equal(result.top.id, 'ling');
+});
+
+test('heroes taken by the enemy or banned move to the unavailable list', () => {
+  const result = scoreJunglers(context({ junglerIds: ['ling', 'fanny', 'karina'], enemyIds: ['fanny'], unavailableIds: ['karina'] }));
+  assert.deepEqual(ids(result), ['ling']);
+  assert.deepEqual(result.unavailable.map((entry) => entry.id).sort(), ['fanny', 'karina']);
+});
+
+test('ties go to the more comfortable jungler, then more ratings, then name', () => {
+  const comfortTie = scoreJunglers(context({ comfortWeight: 0, enemyIds: ['tigreal'], comfort: { ling: 5, fanny: 2 } }));
+  assert.deepEqual(ids(comfortTie), ['ling', 'fanny']);
+  assert.deepEqual(ids(scoreJunglers(context({ enemyIds: ['tigreal'] }))), ['fanny', 'ling']);
 });
 
 test('only my pool keeps the junglers you gave a comfort rating', () => {
-  const result = scoreJunglers(context({ comfort: { fanny: 3 }, onlyPool: true }));
-  assert.deepEqual(ids(result), ['fanny']);
+  assert.deepEqual(ids(scoreJunglers(context({ comfort: { fanny: 3 }, onlyPool: true }))), ['fanny']);
 });
 
-test('meta gives up to 15 points from win rate', () => {
-  const entries = byId(scoreJunglers(context({
-    junglerIds: ['ling', 'fanny', 'karina', 'baxia'],
-    meta: { ling: { winRate: 0.55 }, fanny: { winRate: 0.45 }, karina: { winRate: 0.53 } },
-  })));
-  assert.equal(entries.ling.parts.meta, 15);
-  assert.equal(entries.fanny.parts.meta, 0);
-  near(entries.karina.parts.meta, 12);
-  assert.equal(entries.baxia.parts.meta, 7.5);
+test('comfortScore maps 1 to 5 onto 0 to 100, and unset to the middle', () => {
+  assert.deepEqual([1, 2, 3, 4, 5, undefined].map(comfortScore), [0, 25, 50, 75, 100, 50]);
 });
 
-test('counter-pick risk subtracts points while strong counters are still open', () => {
-  const entries = byId(scoreJunglers(context({ matchupStats: { ling: { saber: -4, natalia: -3.5, gloo: 3 } } })));
-  assert.equal(entries.ling.parts.risk, 4);
-  assert.deepEqual(entries.ling.details.risk.counterIds, ['saber', 'natalia']);
-  assert.equal(entries.fanny.parts.risk, 0);
-  assert.equal(entries.ling.total, 46);
+test('sortEntries sorts by viability, lowest risk, comfort or name', () => {
+  const entries = [
+    { id: 'ling', total: 60, comfort: 2, risk: { openCounters: ['a', 'b'], facing: [] } },
+    { id: 'fanny', total: 80, comfort: null, risk: { openCounters: ['a', 'b', 'c'], facing: [] } },
+    { id: 'karina', total: 40, comfort: 5, risk: { openCounters: [], facing: ['a'] } },
+  ];
+  const order = (key) => sortEntries(entries, key, (id) => id).map((entry) => entry.id);
+  assert.deepEqual(order('viability'), ['fanny', 'ling', 'karina']);
+  assert.deepEqual(order('risk'), ['karina', 'ling', 'fanny']);
+  assert.deepEqual(order('comfort'), ['karina', 'fanny', 'ling']);
+  assert.deepEqual(order('name'), ['fanny', 'karina', 'ling']);
 });
 
-test('counter-pick risk skips counters already taken and shrinks as the enemy fills picks', () => {
-  const ling = byId(scoreJunglers(context({
-    enemies: [enemy('tigreal'), enemy('miya'), enemy('nana'), enemy('layla')],
-    unavailableIds: ['saber'],
-    matchupStats: { ling: { saber: -4, natalia: -3.5 } },
-  }))).ling;
-  near(ling.parts.risk, 0.4);
-  assert.deepEqual(ling.details.risk.counterIds, ['natalia']);
+test('sorting by viability keeps the ranked order for ties', () => {
+  const entries = [
+    { id: 'zilong', total: 50, comfort: null, risk: { openCounters: [], facing: [] } },
+    { id: 'aamon', total: 50, comfort: null, risk: { openCounters: [], facing: [] } },
+  ];
+  assert.deepEqual(sortEntries(entries, 'viability', (id) => id).map((entry) => entry.id), ['zilong', 'aamon']);
 });
 
-test('my-ratings mode ignores win-rate stats for matchups, synergy, meta and counters', () => {
-  const ling = byId(scoreJunglers(context({
-    ratingSource: 'mine',
-    enemies: [enemy('tigreal'), enemy('miya')],
-    allyIds: ['angela'],
-    ratings: { ling: { tigreal: { tier: 'S' } } },
-    matchupStats: { ling: { miya: 5, saber: -4 } },
-    synergyStats: { ling: { angela: 1.5 } },
-    meta: { ling: { winRate: 0.55 } },
-  }))).ling;
-  near(ling.parts.matchup, 45 * 0.75);
-  assert.equal(ling.details.matchups[1].source, null);
-  assert.deepEqual(ling.coverage, { rated: 1, known: 1, total: 2 });
-  assert.equal(ling.parts.teamFit, 10);
-  assert.deepEqual(ling.details.teamFit.synergy, []);
-  assert.equal(ling.parts.meta, 7.5);
-  assert.equal(ling.details.winRate, null);
-  assert.equal(ling.parts.risk, 0);
+const ranked = (...idList) => idList.map((id) => ({ id }));
+
+test('the graph shows your six best options in ranked order', () => {
+  const options = graphOptions(ranked('a', 'b', 'c', 'd', 'e', 'f', 'g', 'h'), null);
+  assert.deepEqual(options.map((entry) => entry.id), ['a', 'b', 'c', 'd', 'e', 'f']);
 });
 
-test('stats mode ignores your tier ratings, counts stats at full weight and keeps comfort', () => {
-  const ling = byId(scoreJunglers(context({
-    ratingSource: 'stats',
-    enemies: [enemy('tigreal')],
-    ratings: { ling: { tigreal: { tier: 'D' } } },
-    matchupStats: { ling: { tigreal: 5 } },
-    comfort: { ling: 5 },
-  }))).ling;
-  near(ling.parts.matchup, 45 * 0.75);
-  assert.equal(ling.details.matchups[0].source, 'stats');
-  assert.deepEqual(ling.coverage, { rated: 0, known: 1, total: 1 });
-  assert.equal(ling.parts.comfort, 20);
+test('a jungler opened from lower in the list takes the last corner of the graph', () => {
+  const options = graphOptions(ranked('a', 'b', 'c', 'd', 'e', 'f', 'g', 'h'), 'h');
+  assert.deepEqual(options.map((entry) => entry.id), ['a', 'b', 'c', 'd', 'e', 'h']);
 });
 
-test('in both mode your rating overrides the stats for counter-pick risk', () => {
-  const ling = byId(scoreJunglers(context({
-    matchupStats: { ling: { saber: -4, natalia: -3.5 } },
-    ratings: { ling: { saber: { tier: 'B' }, nana: { tier: 'D' } } },
-  }))).ling;
-  assert.equal(ling.parts.risk, 4);
-  assert.deepEqual(ling.details.risk.counterIds, ['nana', 'natalia']);
+test('the graph leaves the order alone when the opened jungler is already on it', () => {
+  const options = graphOptions(ranked('a', 'b', 'c'), 'b');
+  assert.deepEqual(options.map((entry) => entry.id), ['a', 'b', 'c']);
 });
 
-test('my-ratings mode counts open heroes you rated D as counters', () => {
-  const ling = byId(scoreJunglers(context({
-    ratingSource: 'mine',
-    ratings: { ling: { nana: { tier: 'D' }, saber: { tier: 'C' } } },
-    matchupStats: { ling: { natalia: -5 } },
-  }))).ling;
-  assert.equal(ling.parts.risk, 2);
-  assert.deepEqual(ling.details.risk.counterIds, ['nana']);
+test('banSuggestions lists open heroes that counter the most of your pool', () => {
+  const suggestions = banSuggestions({
+    junglerIds: ['ling', 'fanny', 'karina'],
+    tiersByJungler: {
+      ling: mine({ saber: 'D', nana: 'C' }),
+      fanny: mine({ saber: 'D', miya: 'D', nana: 'C' }),
+      karina: mine({ saber: 'D' }),
+    },
+    comfort: { ling: 5, fanny: 3, karina: 1 },
+    takenIds: ['miya'],
+  });
+  assert.deepEqual(suggestions.map((item) => item.heroId), ['saber', 'nana']);
+  assert.deepEqual(suggestions[0].counters, ['ling', 'fanny']);
 });
 
-test('an unknown rating source behaves like both', () => {
-  const ling = byId(scoreJunglers(context({ ratingSource: 'nonsense', enemies: [enemy('tigreal')], matchupStats: { ling: { tigreal: 5 } } }))).ling;
-  near(ling.parts.matchup, 45 * (1 / 1.5));
-  assert.equal(ling.details.matchups[0].source, 'stats');
-});
-
-test('ties are ranked by id', () => {
-  assert.deepEqual(ids(scoreJunglers(context({ junglerIds: ['ling', 'fanny'] }))), ['fanny', 'ling']);
+test('banSuggestions uses your whole roster until you set any comfort', () => {
+  const suggestions = banSuggestions({
+    junglerIds: ['ling', 'fanny'],
+    tiersByJungler: { fanny: mine({ saber: 'D' }) },
+    comfort: {},
+    takenIds: [],
+  });
+  assert.deepEqual(suggestions.map((item) => item.heroId), ['saber']);
 });

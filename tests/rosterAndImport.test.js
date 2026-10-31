@@ -103,3 +103,39 @@ test('mergeSaveData leaves out comfort and known defaults when neither side has 
   const merged = mergeSaveData({ version: 2, junglers: ['ling'], matchups: {} }, { version: 2, junglers: [], matchups: {} });
   assert.deepEqual(merged, { version: 2, junglers: ['ling'], matchups: {} });
 });
+
+test('backups carry skill groups and group ratings, without heroes that no longer exist', () => {
+  const saved = {
+    version: 2,
+    junglers: ['ling'],
+    matchups: {},
+    skillGroups: [{ id: 'blink', name: 'Blink', category: 'Movement', heroIds: ['harley', 'nobody'] }],
+    groupRatings: { ling: { blink: 'C', gone: 'S' }, nobody: { blink: 'A' } },
+  };
+  const { data } = normalizeImport(JSON.parse(JSON.stringify(buildExport(saved, []))));
+  assert.deepEqual(data.skillGroups, [{ id: 'blink', name: 'Blink', category: 'Movement', heroIds: ['harley'] }]);
+  assert.deepEqual(data.groupRatings, { ling: { blink: 'C' } });
+});
+
+test('a backup from before skill groups adds none of its own', () => {
+  const { data } = normalizeImport({ app: 'JunglerOS', version: 2, junglers: ['ling'], matchups: {} });
+  assert.equal(data.skillGroups, undefined);
+});
+
+test("mergeSaveData keeps your groups, adds the backup's, and the backup wins on the same group", () => {
+  const merged = mergeSaveData(
+    deepFreeze({ version: 2, junglers: [], matchups: {}, skillGroups: [{ id: 'a', name: 'Mine', category: 'X', heroIds: [] }, { id: 'b', name: 'Old', category: 'X', heroIds: [] }], groupRatings: { ling: { a: 'S', b: 'S' } } }),
+    deepFreeze({ version: 2, junglers: [], matchups: {}, skillGroups: [{ id: 'b', name: 'New', category: 'X', heroIds: ['nana'] }], groupRatings: { ling: { b: 'D' } } }),
+  );
+  assert.deepEqual(merged.skillGroups.map((group) => group.name), ['Mine', 'New']);
+  assert.deepEqual(merged.groupRatings, { ling: { a: 'S', b: 'D' } });
+});
+
+test('mergeSaveData keeps your groups when the backup has none', () => {
+  const merged = mergeSaveData(
+    { version: 2, junglers: [], matchups: {}, skillGroups: [{ id: 'a', name: 'Mine', category: 'X', heroIds: [] }], groupRatings: { ling: { a: 'S' } } },
+    { version: 2, junglers: [], matchups: {} },
+  );
+  assert.deepEqual(merged.skillGroups.map((group) => group.id), ['a']);
+  assert.deepEqual(merged.groupRatings, { ling: { a: 'S' } });
+});

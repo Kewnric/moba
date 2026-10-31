@@ -2,29 +2,172 @@
 @tailwind components;
 @tailwind utilities;
 
-body {
-    background-color: #0f172a; /* Slate 900 */
-    color: #f3f4f6;
-    overflow: hidden; /* Prevent body scroll */
+:root {
+    --ink: #0b0d12;
+    --ink-2: #12151c;
+    --ink-3: #1a1e27;
+    --ink-4: #252a35;
+    --line: rgba(241, 239, 232, 0.13);
+    --line-strong: rgba(241, 239, 232, 0.32);
+    --fg: #f1efe8;
+    --fg-muted: #aeb2bd;
+    --fg-faint: #868c9a;
+    --accent: #ffe14d;
+    --accent-on: #15130a;
+    --enemy: #ff5f45;
+    --ally: #4aa8ff;
+    --good: #5fd39a;
+    --bad: #ff7a66;
+
+    /* Tiers run blue (good for you) through gray (even) to red-orange (bad for you). */
+    --tier-s: #4aa8ff;
+    --tier-a: #9bcfff;
+    --tier-b: #a7adb8;
+    --tier-c: #ffbd8a;
+    --tier-d: #ff5f45;
+    --on-s: #06121f;
+    --on-a: #06121f;
+    --on-b: #0e1014;
+    --on-c: #1c0f05;
+    --on-d: #1a0603;
+
+    /* The stat sheet is a page of manga paper on the dark app. */
+    --sheet: #f3f0e6;
+    --sheet-ink: #14151b;
+    --sheet-muted: #57564f;
+    --sheet-line: rgba(20, 21, 27, 0.24);
+    --sheet-tone: #c9c5b8;
 }
 
-/* Hide Scrollbar but allow scrolling */
+.sheet {
+    --tier-s: #0a5fb8;
+    --tier-a: #3b82c9;
+    --tier-b: #8a877f;
+    --tier-c: #cf7420;
+    --tier-d: #c5301c;
+    --on-s: #ffffff;
+    --on-a: #06121f;
+    --on-b: #0e1014;
+    --on-c: #1c0f05;
+    --on-d: #ffffff;
+    background-color: var(--sheet);
+    color: var(--sheet-ink);
+}
+
+html, body, #root { height: 100%; }
+
+body {
+    background-color: var(--ink);
+    color: var(--fg);
+    font-family: Barlow, system-ui, 'Segoe UI', Roboto, sans-serif;
+    overflow: hidden;
+    touch-action: manipulation;
+}
+
+button { cursor: pointer; }
+button:disabled { cursor: not-allowed; }
+
+:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.sheet :focus-visible { outline-color: var(--sheet-ink); }
+
 .scrollbar-hide::-webkit-scrollbar { display: none; }
 .scrollbar-hide { -ms-overflow-style: none; scrollbar-width: none; }
+.scroll-thin { scrollbar-width: thin; scrollbar-color: var(--ink-4) transparent; }
 
 @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
-@keyframes scaleUp { from { transform: scale(0.9); opacity: 0; } to { transform: scale(1); opacity: 1; } }
+@keyframes rise { from { transform: translateY(14px); opacity: 0; } to { transform: translateY(0); opacity: 1; } }
+@keyframes pulseRing { 0%, 100% { box-shadow: 0 0 0 2px var(--accent); } 50% { box-shadow: 0 0 0 4px var(--accent); } }
 
-.animate-fadeIn { animation: fadeIn 0.3s ease-out; }
-.animate-scaleUp { animation: scaleUp 0.4s cubic-bezier(0.34, 1.56, 0.64, 1); }
+.animate-fadeIn { animation: fadeIn 0.2s ease-out; }
+.animate-rise { animation: rise 0.22s ease-out; }
 
-.glass-panel {
-    background: rgba(30, 41, 59, 0.7);
-    backdrop-filter: blur(12px);
-    border: 1px solid rgba(255, 255, 255, 0.05);
+@media (prefers-reduced-motion: reduce) {
+    *, *::before, *::after { animation-duration: 0.01ms !important; animation-iteration-count: 1 !important; transition-duration: 0.01ms !important; }
 }
 
-.dragging-over {
-    background-color: rgba(6, 182, 212, 0.1);
-    border-color: rgba(6, 182, 212, 0.5);
+@layer components {
+    /* Small uppercase labels, the voice of the whole interface. */
+    .label { font-family: 'Barlow Condensed', 'Arial Narrow', Arial, sans-serif; font-weight: 600; font-size: 0.8125rem; letter-spacing: 0.08em; text-transform: uppercase; line-height: 1.1; }
+    .display { font-family: Anton, Impact, Haettenschweiler, 'Arial Narrow Bold', sans-serif; font-weight: 400; text-transform: uppercase; letter-spacing: 0.01em; line-height: 1; }
+
+    /* Slanted section tab, cut like a manga caption. */
+    .tab-cut { display: inline-flex; align-items: center; gap: 0.375rem; padding: 0.25rem 0.9rem 0.25rem 0.7rem; background: var(--fg); color: var(--ink); clip-path: polygon(0 0, 100% 0, calc(100% - 9px) 100%, 0 100%); font-family: 'Barlow Condensed', 'Arial Narrow', Arial, sans-serif; font-weight: 700; font-size: 0.875rem; letter-spacing: 0.08em; text-transform: uppercase; line-height: 1.15; white-space: nowrap; }
+    .tab-cut-enemy { background: var(--enemy); color: #1a0603; }
+    .tab-cut-ally { background: var(--ally); color: #06121f; }
+    .tab-cut-ink { background: var(--sheet-ink); color: var(--sheet); }
+
+    .btn { display: inline-flex; align-items: center; justify-content: center; gap: 0.375rem; min-height: 2.25rem; padding: 0 0.75rem; border: 1px solid var(--line-strong); background: var(--ink-3); color: var(--fg); font-family: 'Barlow Condensed', 'Arial Narrow', Arial, sans-serif; font-weight: 600; font-size: 0.875rem; letter-spacing: 0.06em; text-transform: uppercase; white-space: nowrap; transition: background-color 0.12s, color 0.12s, border-color 0.12s; }
+    .btn:hover:not(:disabled) { background: var(--ink-4); border-color: var(--fg-muted); }
+    .btn:disabled { opacity: 0.4; }
+    .btn-primary { background: var(--accent); border-color: var(--accent); color: var(--accent-on); }
+    .btn-primary:hover:not(:disabled) { background: #fff07f; border-color: #fff07f; }
+    .btn-danger { background: transparent; border-color: var(--bad); color: var(--bad); }
+    .btn-danger:hover:not(:disabled) { background: var(--bad); border-color: var(--bad); color: #1a0603; }
+    .btn-quiet { background: transparent; border-color: transparent; color: var(--fg-muted); }
+    .btn-quiet:hover:not(:disabled) { background: var(--ink-3); border-color: transparent; color: var(--fg); }
+
+    .field { width: 100%; min-height: 2.5rem; padding: 0.375rem 0.75rem; background: var(--ink-3); border: 1px solid var(--line); color: var(--fg); font-size: 1rem; }
+    .field::placeholder { color: var(--fg-faint); }
+    .field:focus { outline: none; border-color: var(--accent); }
+    @media (min-width: 1024px) { .field { font-size: 0.9375rem; } }
+
+    .panel { background: var(--ink-2); border: 1px solid var(--line); }
+
+    /* Filter chips: lanes, sort and other one-of choices. */
+    .chip { display: inline-flex; align-items: center; gap: 0.25rem; flex-shrink: 0; min-height: 2rem; padding: 0 0.625rem; border: 1px solid var(--line); color: var(--fg-muted); font-family: 'Barlow Condensed', 'Arial Narrow', Arial, sans-serif; font-weight: 600; font-size: 0.8125rem; letter-spacing: 0.06em; text-transform: uppercase; transition: color 0.12s, border-color 0.12s, background-color 0.12s; }
+    .chip:hover { color: var(--fg); border-color: var(--line-strong); }
+    .chip[aria-pressed='true'] { background: var(--fg); border-color: var(--fg); color: var(--ink); }
+    .chip-group { display: inline-flex; }
+    .chip-group > .chip + .chip { margin-left: -1px; }
 }
+
+/* Tier fills. Text color is chosen per tier so each pair keeps its contrast on both surfaces. */
+.t-S { background-color: var(--tier-s); color: var(--on-s); }
+.t-A { background-color: var(--tier-a); color: var(--on-a); }
+.t-B { background-color: var(--tier-b); color: var(--on-b); }
+.t-C { background-color: var(--tier-c); color: var(--on-c); }
+.t-D { background-color: var(--tier-d); color: var(--on-d); }
+.t-none { background-color: transparent; color: var(--fg-faint); box-shadow: inset 0 0 0 1px var(--line-strong); }
+.sheet .t-none { color: var(--sheet-muted); box-shadow: inset 0 0 0 1px var(--sheet-line); }
+
+/* Screentone dots fading in from the top right of the app, like a manga page corner. */
+.app-tone { position: relative; isolation: isolate; }
+.app-tone::before { content: ''; position: absolute; inset: 0; z-index: -1; pointer-events: none; background-image: radial-gradient(rgba(241, 239, 232, 0.09) 1px, transparent 1.3px); background-size: 7px 7px; -webkit-mask-image: radial-gradient(circle at 100% 0, #000, transparent 42%); mask-image: radial-gradient(circle at 100% 0, #000, transparent 42%); }
+
+.graph-paper { background-image: linear-gradient(var(--sheet-line) 1px, transparent 1px), linear-gradient(90deg, var(--sheet-line) 1px, transparent 1px); background-size: 11px 11px; background-position: -1px -1px; }
+
+/* Focus lines burst out from behind the top pick's portrait. */
+.focus-lines { position: absolute; inset: 0; pointer-events: none; background: repeating-conic-gradient(from 0deg at 50% 50%, var(--sheet-ink) 0deg 1.4deg, transparent 1.4deg 8deg); -webkit-mask-image: radial-gradient(circle at 50% 50%, transparent 46%, #000 72%); mask-image: radial-gradient(circle at 50% 50%, transparent 46%, #000 72%); opacity: 0.55; }
+
+.pentagon { clip-path: polygon(50% 0, 100% 38%, 82% 100%, 18% 100%, 0 38%); }
+
+.slot-active { animation: pulseRing 1.6s ease-in-out infinite; box-shadow: 0 0 0 2px var(--accent); }
+.drop-target { box-shadow: 0 0 0 2px var(--accent); background-color: rgba(255, 225, 77, 0.12); }
+
+/* Hexagon chart text. Paper-colored outlines knock the ring out behind the labels. */
+.hex-name { font-family: 'Barlow Condensed', 'Arial Narrow', Arial, sans-serif; font-weight: 700; font-size: 21px; letter-spacing: 0.05em; text-transform: uppercase; fill: var(--sheet-ink); paint-order: stroke; stroke: var(--sheet); stroke-width: 7px; stroke-linejoin: round; }
+.hex-score { font-family: Anton, Impact, Haettenschweiler, 'Arial Narrow Bold', sans-serif; font-size: 46px; fill: var(--sheet-ink); paint-order: stroke; stroke: var(--sheet); stroke-width: 10px; stroke-linejoin: round; }
+.hex-empty { fill: var(--sheet-muted); }
+.hex-scale { font-family: 'Barlow Condensed', 'Arial Narrow', Arial, sans-serif; font-weight: 600; font-size: 14px; fill: var(--sheet-ink); }
+
+.tier-off { color: var(--fg-faint); box-shadow: inset 0 0 0 1px var(--line); }
+.tier-off:hover { color: var(--fg); box-shadow: inset 0 0 0 1px var(--line-strong); }
+.sheet .tier-off { color: var(--sheet-muted); box-shadow: inset 0 0 0 1px var(--sheet-line); }
+.sheet .tier-off:hover { color: var(--sheet-ink); box-shadow: inset 0 0 0 1px var(--sheet-ink); }
+
+.hex-dot-S { fill: var(--tier-s); }
+.hex-dot-A { fill: var(--tier-a); }
+.hex-dot-B { fill: var(--tier-b); }
+.hex-dot-C { fill: var(--tier-c); }
+.hex-dot-D { fill: var(--tier-d); }
+
+/* Buttons on the paper stat sheet. */
+.sheet-btn { display: inline-flex; align-items: center; justify-content: center; min-height: 2.25rem; padding: 0 0.875rem; border: 2px solid var(--sheet-ink); background: transparent; color: var(--sheet-ink); font-family: 'Barlow Condensed', 'Arial Narrow', Arial, sans-serif; font-weight: 700; font-size: 0.875rem; letter-spacing: 0.06em; text-transform: uppercase; white-space: nowrap; transition: background-color 0.12s, color 0.12s; }
+.sheet-btn:hover { background: var(--sheet-tone); }
+.sheet-btn-solid { background: var(--sheet-ink); color: var(--sheet); }
+.sheet-btn-solid:hover { background: #33343d; }
+
+/* Each corner of the hexagon is a button. The chosen hero's name sits on an ink tab. */
+.hex-axis { cursor: pointer; outline: none; }
+.hex-axis:focus-visible .hex-name { text-decoration: underline; }
+.hex-name-on { fill: var(--sheet); stroke: none; }
