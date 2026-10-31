@@ -181,6 +181,8 @@ test('an alternative with an exact name beats an earlier close guess', () => {
 });
 
 const VOWELS = 'aeiou';
+// These two try thousands of slips, which takes a while on slower machines.
+const EXHAUSTIVE_TIMEOUT_MS = 60_000;
 const asTyped = (hero) => normalizeSpeech(hero.name).replace(/ /g, '');
 const heroThatIs = (text) => HEROES.find((hero) => asTyped(hero) === text);
 
@@ -206,7 +208,7 @@ test('every hero is picked or offered with any one vowel wrong', () => {
       : []));
   });
   assert.deepEqual(missedSlips(slips), []);
-});
+}, EXHAUSTIVE_TIMEOUT_MS);
 
 test('every hero of six letters or more is picked or offered with any one letter missing', () => {
   const slips = HEROES.filter((hero) => asTyped(hero).length >= 6).flatMap((hero) => {
@@ -214,4 +216,4 @@ test('every hero of six letters or more is picked or offered with any one letter
     return [...name].map((_, index) => [name.slice(0, index) + name.slice(index + 1), hero]);
   });
   assert.deepEqual(missedSlips(slips), []);
-});
+}, EXHAUSTIVE_TIMEOUT_MS);
