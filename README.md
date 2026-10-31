@@ -22,7 +22,7 @@ The total rounds to a tier the same way: 88+ S, 63+ A, 38+ B, 13+ C, below that 
 
 **Risk never changes a score.** It's listed next to the score so you can plan around it: how many heroes you rated Countered (D) are still open, shown as None (0), Low (1-3), Medium (4-8) or High (9+). Once the enemy has five picks, it drops to none.
 
-Before the first enemy pick, the matchup part is your average rating against every hero still open, so the sheet shows your best blind pick.
+Nothing is ranked or recommended until the first enemy pick, because there's nothing to score against yet.
 
 ## Draft
 
@@ -31,9 +31,35 @@ Before the first enemy pick, the matchup part is your average rating against eve
 - With a mouse you can drag a hero onto any slot, drag between slots to move or swap heroes, and drag a slot back onto the hero list to remove it.
 - **Bans** are optional. Tap a ban slot to enter them in one go; while you do, the list suggests the heroes that counter the most junglers you play. Banned heroes are never suggested.
 - **They have** lists the skill groups in the enemy lineup.
-- **Enemy picks stay as five slots.** Under them, the **stat sheet** starts with a hexagon of your options: your six best junglers, each corner showing the hero's name above their score. Tap a corner to see that jungler. Below that are the ID card with the total, every enemy score with where it came from, your notes and the risk. Tap a letter on the sheet to fix a rating on the spot.
-- **All junglers** lists everyone, not just the top few, with their score, risk and a tier chip per enemy. Sort by best score, lowest risk, comfort or name, filter by role or **My pool**, or switch to **Tiers** for a live tier list of this draft. Tap a jungler to open them on the sheet. If they're outside your top six, they take the hexagon's last corner.
+- **Enemy picks stay as five slots, pinned at the top** while you scroll. Under them, the **stat sheet** starts with a hexagon of your options: your six best junglers, each corner showing the hero's name above their score. Tap a corner to see that jungler. Below that are the ID card with the total, every enemy score with where it came from, your notes and the risk. Tap a letter on the sheet to fix a rating on the spot.
+- **All junglers** lists everyone, not just the top few, with their score, risk and a tier chip per enemy. Sort by best score, lowest risk, comfort or name, filter by role, **My pool** or **Safe picks** (hides any jungler with a D against this lineup), or switch to **Tiers** for a live tier list of this draft. Tap a jungler to open them on the sheet. If they're outside your top six, they take the hexagon's last corner.
+- **Lock in** a jungler to swap the sheet for their **game plan**: your tips and notes for each enemy, what they bring, and what can still counter you. **Change pick** goes back.
 - After the game, tap **Won** or **Lost** on the sheet to log the jungler shown there.
+- On PC, start typing anywhere to search and press Enter to add the top match. Keys 1 to 5 choose an enemy slot, and Ctrl+Z undoes.
+
+## Voice control
+
+Turn on **Voice** on the draft board and say hero names to fill slots. It needs a browser with speech recognition, such as Chrome or Edge.
+
+| Say | What happens |
+| --- | --- |
+| Lancelot, or "they picked Lancelot" | Fills the next slot |
+| Lancelot and Ling | Fills two slots |
+| Ban Lancelot | Fills the next ban |
+| Undo | Takes back the last change |
+| Erase, or "remove last" | Removes the last hero added |
+| Remove Ling | Removes that hero |
+| Lancelot is their jungler | Marks them JG |
+| Lock in, or "lock in Ling" | Opens the game plan |
+| Unlock | Goes back to choosing |
+| New draft | Starts a fresh draft |
+| Stop listening | Turns voice off |
+
+It only acts when what you said is clearly a hero or a command, so normal talk near the mic is ignored. Hero names get misheard, so it knows common mishearings and close spellings. When it still misses one, tap **Teach** to tell it what you meant.
+
+While voice is on, your browser sends mic audio to its own speech service to turn it into text. JunglerOS doesn't record or keep any of it.
+
+**Settings > Voice and mic** has a mic tester: choose your mic, see which one is in use, and watch a live volume bar move as you talk. **Try a command** shows what it understood without touching your draft.
 
 ## Tier lists
 
@@ -44,6 +70,9 @@ Each jungler has its own S to D board.
 - Adding a hero to a group later rates that hero for every jungler who has rated the group.
 - Tap a hero to open its matchup: tier, quick tip and long note.
 - **Copy from** starts a jungler from another jungler's list, which is handy when they play alike. **Clear** resets the list and keeps your notes.
+- **Select** several heroes, then tap a tier or drag any one of them to move them all. Ctrl+click also starts a selection.
+- **Undo** (or Ctrl+Z) takes back the last change to your tier lists, comfort, notes or skill groups.
+- **Set comfort** shows every jungler's comfort on one screen.
 - A jungler never gets a rating against themselves.
 
 ## Skills
@@ -57,14 +86,19 @@ Skill groups are yours to shape. A new save starts with the ones you asked for:
 | Evasion | I-frame skills | Hirara, Roger, Lancelot |
 | Threat | Close-range burst | Paquito, Eudora |
 
-Create, rename, recategorize or delete groups, tap heroes in and out, and set one tier per jungler for a whole group from the same screen. A hero can be in as many groups as you like.
+Create, rename, recategorize or delete groups, tap heroes in and out, and set one tier per jungler for a whole group from the same screen. A hero can be in as many groups as you like. **Bulk add** fills a group with every hero of a role, speciality or lane in one go; it only fills the list and never rates anyone.
 
 ## History
 
 - Your record, win rate, and each jungler's record.
 - Your win rate on the top pick compared with other picks.
+- Your record against each skill group, toughest first.
 - **Tiers to review**: after 3 games with the same jungler against the same enemy, matchups you haven't rated, or rated two or more tiers away from your results, are listed with a one-tap fix. Win rates map to tiers as 70%+ S, 55%+ A, 45%+ B, 30%+ C, below that D.
 - Up to 500 games are kept.
+
+## Themes
+
+Ink, Midnight, Jungle, Crimson, Violet and Manga Paper. Switch from the top bar on PC or in Settings. Tier colors stay the same in every theme.
 
 ## Your saved data
 
@@ -100,11 +134,16 @@ Needs Node 22 or newer.
 | `src/lib/draft.js` | Draft board: picks, bans and pick order |
 | `src/lib/dataReducer.js` | Every change to your roster, ratings, groups, notes and comfort |
 | `src/lib/saveData.js` | Saved-data format, upgrades from older saves, backup import and export |
+| `src/lib/voice.js` | Turns what was heard into draft actions, including hero name matching |
+| `src/lib/mic.js` | Mic level maths for the mic tester |
+| `src/lib/undoableData.js` | Undo history for saved-data changes |
 | `src/lib/backupFile.js` | Backup file names, compact writing, and size and type checks before reading |
 | `src/lib/history.js` | Recorded games, records by jungler and tiers to review |
 | `src/lib/storage.js` | Browser saving that falls back safely when data is unreadable |
 | `src/data/heroes.js` | All 133 heroes: id, lanes, official roles and specialities, portrait |
 | `src/data/skillGroups.js` | Starter skill groups and name ideas |
+| `src/data/heroAliases.js` | How speech recognition tends to spell each hero |
+| `src/data/themes.js` | The color theme list; the colors are in `src/index.css` |
 | `src/data/tiers.js` | Tier labels, points and colors |
 | `tests/` | Tests for scoring, skill groups, the draft board, saved data and hero data |
 

@@ -8,6 +8,7 @@ import {
   setBansPerTeam,
   setFirstPick,
   toggleEnemyJungler,
+  setLockedJungler,
   clearAllyPicks,
   nextSlot,
   nextBanSlot,
@@ -69,6 +70,12 @@ test('clearSlot empties a slot and forgets that enemy was their jungler', () => 
   draft = clearSlot(draft, { group: 'enemy', index: 0 });
   assert.equal(draft.enemy[0], null);
   assert.equal(draft.enemyJungler, null);
+});
+
+test('setLockedJungler locks in your pick, and null unlocks it', () => {
+  const locked = setLockedJungler(createDraft(), 'ling');
+  assert.equal(locked.lockedJungler, 'ling');
+  assert.equal(setLockedJungler(locked, null).lockedJungler, null);
 });
 
 test('toggleEnemyJungler marks one enemy, and marking them again clears it', () => {
@@ -211,8 +218,10 @@ test('moveBetweenSlots returns the same draft for the same slot or an empty sour
   assert.equal(moveBetweenSlots(draft, { group: 'ally', index: 1 }, { group: 'ally', index: 2 }), draft);
 });
 
-test('draft preferences default to enemy-only, a 5-ban phase and 30 percent comfort', () => {
-  assert.deepEqual(DEFAULT_DRAFT_PREFERENCES, { enemyOnly: true, banPhase: true, bansPerTeam: 5, firstPick: 'ally', comfortWeight: 30, onlyPool: false });
+test('draft preferences default to enemy-only, a 5-ban phase, 30 percent comfort and the Ink theme', () => {
+  const { enemyOnly, banPhase, bansPerTeam, firstPick, comfortWeight, onlyPool, safeOnly, theme, micDeviceId, voiceLang, voiceAliases } = DEFAULT_DRAFT_PREFERENCES;
+  assert.deepEqual({ enemyOnly, banPhase, bansPerTeam, firstPick, comfortWeight, onlyPool, safeOnly, theme }, { enemyOnly: true, banPhase: true, bansPerTeam: 5, firstPick: 'ally', comfortWeight: 30, onlyPool: false, safeOnly: false, theme: 'ink' });
+  assert.deepEqual({ micDeviceId, voiceLang, voiceAliases }, { micDeviceId: '', voiceLang: 'en-US', voiceAliases: {} });
 });
 
 test('isDraftPreferences checks the settings added later only when they are saved', () => {
@@ -221,12 +230,16 @@ test('isDraftPreferences checks the settings added later only when they are save
   assert.equal(isDraftPreferences({ ...old, enemyOnly: 'yes' }), false);
   assert.equal(isDraftPreferences({ ...old, comfortWeight: 33 }), false);
   assert.equal(isDraftPreferences({ ...old, comfortWeight: 40 }), true);
+  assert.equal(isDraftPreferences({ ...old, theme: 'jungle' }), true);
+  assert.equal(isDraftPreferences({ ...old, theme: 'nope' }), false);
+  assert.equal(isDraftPreferences({ ...old, voiceAliases: 'nope' }), false);
+  assert.equal(isDraftPreferences({ ...old, voiceAliases: { funny: 'fanny' } }), true);
 });
 
 test('normalizeDraftPreferences fills in new settings and drops the old rating source', () => {
   assert.deepEqual(
     normalizeDraftPreferences({ banPhase: false, bansPerTeam: 4, firstPick: 'enemy', ratingSource: 'both' }),
-    { enemyOnly: true, banPhase: false, bansPerTeam: 4, firstPick: 'enemy', comfortWeight: 30, onlyPool: false },
+    { ...DEFAULT_DRAFT_PREFERENCES, banPhase: false, bansPerTeam: 4, firstPick: 'enemy' },
   );
 });
 

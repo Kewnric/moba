@@ -1,6 +1,6 @@
 import { useMemo, useState } from 'react';
 import { TIER_LABELS } from '../data/tiers.js';
-import { reviewRatings, summarizeHistory } from '../lib/history.js';
+import { reviewRatings, summarizeHistory, summarizeSkillGroups } from '../lib/history.js';
 import { Icons } from '../components/Icons.jsx';
 import HeroAvatar, { heroName } from '../components/HeroAvatar.jsx';
 import { EmptyState, TierChip } from '../components/ui.jsx';
@@ -20,9 +20,10 @@ function Stat({ label, value, detail }) {
     );
 }
 
-export default function History({ history, tiersByJungler, onDeleteGame, onSetTier, onOpenDraft }) {
+export default function History({ history, tiersByJungler, skillGroups, onDeleteGame, onSetTier, onOpenDraft }) {
     const summary = useMemo(() => summarizeHistory(history), [history]);
     const review = useMemo(() => reviewRatings(history, tiersByJungler, { minGames: REVIEW_MIN_GAMES }), [history, tiersByJungler]);
+    const groupRecords = useMemo(() => summarizeSkillGroups(history, skillGroups), [history, skillGroups]);
     const [showAll, setShowAll] = useState(false);
 
     if (!history.length) {
@@ -92,6 +93,31 @@ export default function History({ history, tiersByJungler, onDeleteGame, onSetTi
                         )}
                     </section>
                 </div>
+
+                <section aria-label="Win rate against skill groups" className="panel p-3">
+                    <span className="tab-cut">Against your skill groups</span>
+                    {groupRecords.length === 0 ? (
+                        <p className="text-sm text-fg-muted mt-3">Skill groups show up here once you've logged a game against one of their heroes.</p>
+                    ) : (
+                        <>
+                            <ul className="space-y-2 mt-3">
+                                {groupRecords.map((item) => (
+                                    <li key={item.group.id} className="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-3">
+                                        <div className="min-w-0">
+                                            <div className="flex items-baseline justify-between gap-2 text-sm">
+                                                <span className="font-semibold truncate">{item.group.name} <span className="font-normal text-xs text-fg-faint">{item.group.category}</span></span>
+                                                <span className="text-fg-muted whitespace-nowrap tabular-nums">{item.wins}-{item.losses}</span>
+                                            </div>
+                                            <div className="mt-1 h-1 bg-ink-4"><div className="h-full bg-accent" style={{ width: `${item.winRate * 100}%` }} /></div>
+                                        </div>
+                                        <span className="display text-xl w-12 text-right">{percent(item.winRate)}</span>
+                                    </li>
+                                ))}
+                            </ul>
+                            <p className="text-xs text-fg-faint mt-2">Your toughest groups come first. A game counts when any enemy that game is in the group as it stands now.</p>
+                        </>
+                    )}
+                </section>
 
                 <section aria-label="Recent games" className="panel p-3">
                     <span className="tab-cut">{showAll ? 'All games' : 'Recent games'}</span>

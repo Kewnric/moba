@@ -10,10 +10,12 @@ import {
     nextSlot,
     setBansPerTeam,
     setFirstPick,
+    setLockedJungler,
     setSlot,
     toggleEnemyJungler,
 } from '../lib/draft.js';
 import { createSafeStorage } from '../lib/storage.js';
+import { applyVoiceAction } from '../lib/voice.js';
 
 const DRAFT_KEY = 'jungleros_draft_v1';
 const HISTORY_LIMIT = 50;
@@ -64,6 +66,39 @@ export function useDraft(preferences, updatePreferences) {
             setSelectedSlot(slot);
         },
         toggleEnemyJungler: (heroId) => commit(toggleEnemyJungler(draft, heroId)),
+        setLocked: (heroId) => commit(setLockedJungler(draft, heroId)),
+        // Runs everything heard in one phrase, one step at a time, so "Lancelot and Ling" fills two slots and
+        // each can be undone. Returns what happened with each.
+        applyVoice: (actions) => {
+            let current = draft;
+            const past = [...history];
+            let preferred = selectedSlot;
+            const results = actions.map((action) => {
+                if (action.type === 'undo') {
+                    if (!past.length) return { ok: false, note: 'There is nothing to undo.' };
+                    current = past.pop();
+                    return { ok: true, note: 'Undone.' };
+                }
+                if (action.type === 'newDraft') {
+                    past.push(current);
+                    current = draftFromPreferences(preferences);
+                    return { ok: true, note: 'New draft.' };
+                }
+                const result = applyVoiceAction(current, action, { enemyOnly, preferredSlot: preferred, history: past });
+                if (result.draft !== current) {
+                    past.push(current);
+                    current = result.draft;
+                    preferred = null;
+                }
+                return result;
+            });
+            if (current !== draft) {
+                setHistory(past.slice(-HISTORY_LIMIT));
+                setDraft(current);
+                setSelectedSlot(preferred);
+            }
+            return results;
+        },
         // Turning your team off clears its picks, so nothing hidden keeps affecting the ranking. Undo brings them back.
         setEnemyOnly: (on) => {
             if (on) commit(clearAllyPicks(draft));

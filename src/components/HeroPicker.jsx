@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { HEROES } from '../data/heroes.js';
 import { filterHeroes } from '../lib/heroFilter.js';
 import { isBanSlot } from '../lib/draft.js';
@@ -11,11 +11,12 @@ const SLOT_NAMES = { ally: 'your team', enemy: 'enemy pick', allyBans: 'ban', en
 const slotText = (slot) => (slot ? `Adding ${SLOT_NAMES[slot.group]}${isBanSlot(slot) ? '' : ` ${slot.index + 1}`}` : 'Draft full');
 
 // The hero list for the draft. A column on desktop. On phones it's a sheet that opens when a slot is tapped.
-export default function HeroPicker({ open, onClose, activeSlot, takenLabels, banIdeas, onPick, dragging, onDragStart, onDragEnd, onDropBack }) {
+export default function HeroPicker({ open, onClose, activeSlot, takenLabels, banIdeas, onPick, onChooseEnemySlot, onUndo, dragging, onDragStart, onDragEnd, onDropBack }) {
     const [lane, setLane] = useState('All');
     const [search, setSearch] = useState('');
     const heroes = filterHeroes(HEROES, { lane, search });
     const filling = isBanSlot(activeSlot);
+    const searchRef = useRef(null);
 
     const pick = (heroId) => {
         onPick(heroId);
@@ -24,8 +25,40 @@ export default function HeroPicker({ open, onClose, activeSlot, takenLabels, ban
 
     const pickFirstMatch = () => {
         const match = heroes.find((hero) => !takenLabels[hero.id]);
-        if (match && activeSlot) pick(match.id);
+        if (!match || !activeSlot) return;
+        pick(match.id);
+        // Off the search box, the next letter starts a new search and number keys choose slots again.
+        if (searchRef.current) searchRef.current.blur();
     };
+
+    // Keyboard shortcuts on PC: start typing anywhere to search, 1 to 5 choose an enemy slot, Ctrl+Z undoes.
+    useEffect(() => {
+        const handleKey = (e) => {
+            if (document.querySelector('[role="dialog"]')) return;
+            const focused = document.activeElement;
+            if (e.key === 'Escape' && focused === searchRef.current) {
+                setSearch('');
+                focused.blur();
+                return;
+            }
+            if (focused && (['INPUT', 'TEXTAREA', 'SELECT'].includes(focused.tagName) || focused.isContentEditable)) return;
+            if ((e.ctrlKey || e.metaKey) && !e.shiftKey && e.key.toLowerCase() === 'z') {
+                e.preventDefault();
+                onUndo();
+                return;
+            }
+            if (e.ctrlKey || e.metaKey || e.altKey) return;
+            if (/^[1-5]$/.test(e.key)) {
+                e.preventDefault();
+                onChooseEnemySlot(Number(e.key) - 1);
+            } else if (/^[a-z]$/i.test(e.key) && searchRef.current && searchRef.current.offsetParent !== null) {
+                // Moving focus now means this same key press lands in the search box.
+                searchRef.current.focus();
+            }
+        };
+        window.addEventListener('keydown', handleKey);
+        return () => window.removeEventListener('keydown', handleKey);
+    });
 
     return (
         <aside aria-label="Hero picker"
@@ -40,7 +73,7 @@ export default function HeroPicker({ open, onClose, activeSlot, takenLabels, ban
                     <button type="button" onClick={onClose} aria-label="Close hero list" className="btn btn-quiet lg:hidden !px-2"><Icons.X size={18} /></button>
                 </div>
                 <form onSubmit={(e) => { e.preventDefault(); pickFirstMatch(); }}>
-                    <SearchField value={search} onChange={setSearch} placeholder="Search, Enter adds the top match" label="Search heroes" enterKeyHint="done"
+                    <SearchField inputRef={searchRef} value={search} onChange={setSearch} placeholder="Type a name, Enter adds it" label="Search heroes" enterKeyHint="done"
                         onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); pickFirstMatch(); } }} />
                 </form>
                 <LaneChips value={lane} onChange={setLane} />

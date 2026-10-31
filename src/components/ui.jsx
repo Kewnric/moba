@@ -79,11 +79,11 @@ export function RiskMeter({ risk, showLabel = false }) {
     );
 }
 
-export function SearchField({ value, onChange, placeholder, label, onKeyDown, enterKeyHint }) {
+export function SearchField({ value, onChange, placeholder, label, onKeyDown, enterKeyHint, inputRef }) {
     return (
         <div className="relative">
             <Icons.Search className="absolute left-3 top-1/2 -translate-y-1/2 text-fg-faint pointer-events-none" size={15} />
-            <input type="search" enterKeyHint={enterKeyHint} aria-label={label} placeholder={placeholder} className="field pl-9" value={value} onChange={(e) => onChange(e.target.value)} onKeyDown={onKeyDown} />
+            <input ref={inputRef} type="search" enterKeyHint={enterKeyHint} aria-label={label} placeholder={placeholder} className="field pl-9" value={value} onChange={(e) => onChange(e.target.value)} onKeyDown={onKeyDown} />
         </div>
     );
 }

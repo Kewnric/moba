@@ -2,6 +2,7 @@
 @tailwind components;
 @tailwind utilities;
 
+/* Ink is the default theme. Each theme below only changes what differs from it. */
 :root {
     --ink: #0b0d12;
     --ink-2: #12151c;
@@ -19,19 +20,68 @@
     --good: #5fd39a;
     --bad: #ff7a66;
 
-    /* Tiers run blue (good for you) through gray (even) to red-orange (bad for you). */
-    --tier-s: #4aa8ff;
-    --tier-a: #9bcfff;
-    --tier-b: #a7adb8;
-    --tier-c: #ffbd8a;
-    --tier-d: #ff5f45;
-    --on-s: #06121f;
-    --on-a: #06121f;
-    --on-b: #0e1014;
-    --on-c: #1c0f05;
-    --on-d: #1a0603;
+    /* The tier colors stay the same in every theme, with dark letters on top. */
+    --tier-s: #ff7f7f;
+    --tier-a: #ffbf7f;
+    --tier-b: #ffdf7f;
+    --tier-c: #ffff7f;
+    --tier-d: #bfff7f;
+    --on-tier: #14151b;
 
-    /* The stat sheet is a page of manga paper on the dark app. */
+    /* The stat sheet's own surface. */
+    --sheet: #161a22;
+    --sheet-ink: #f1efe8;
+    --sheet-muted: #aeb2bd;
+    --sheet-line: rgba(241, 239, 232, 0.2);
+    --sheet-tone: #2b303c;
+}
+
+[data-theme='midnight'] {
+    --ink: #070d1a;
+    --ink-2: #0e1728;
+    --ink-3: #152136;
+    --ink-4: #1f2e49;
+    --accent: #38d6ff;
+    --accent-on: #04141c;
+    --sheet: #101b2e;
+    --sheet-tone: #22324e;
+}
+
+[data-theme='jungle'] {
+    --ink: #07110c;
+    --ink-2: #0e1b14;
+    --ink-3: #15261d;
+    --ink-4: #1f3529;
+    --accent: #a6ee3f;
+    --accent-on: #0c1503;
+    --sheet: #101f17;
+    --sheet-tone: #24392c;
+}
+
+[data-theme='crimson'] {
+    --ink: #130809;
+    --ink-2: #1d0e10;
+    --ink-3: #2a1518;
+    --ink-4: #3a1e22;
+    --accent: #ff9d4d;
+    --accent-on: #1c0d02;
+    --sheet: #21110f;
+    --sheet-tone: #3f2327;
+}
+
+[data-theme='violet'] {
+    --ink: #0e0916;
+    --ink-2: #171023;
+    --ink-3: #211832;
+    --ink-4: #2e2245;
+    --accent: #ff6fd1;
+    --accent-on: #1d0515;
+    --sheet: #1a1229;
+    --sheet-tone: #352850;
+}
+
+/* A bright page of manga paper on the dark app. */
+[data-theme='paper'] {
     --sheet: #f3f0e6;
     --sheet-ink: #14151b;
     --sheet-muted: #57564f;
@@ -40,16 +90,6 @@
 }
 
 .sheet {
-    --tier-s: #0a5fb8;
-    --tier-a: #3b82c9;
-    --tier-b: #8a877f;
-    --tier-c: #cf7420;
-    --tier-d: #c5301c;
-    --on-s: #ffffff;
-    --on-a: #06121f;
-    --on-b: #0e1014;
-    --on-c: #1c0f05;
-    --on-d: #ffffff;
     background-color: var(--sheet);
     color: var(--sheet-ink);
 }
@@ -100,7 +140,7 @@ button:disabled { cursor: not-allowed; }
     .btn:hover:not(:disabled) { background: var(--ink-4); border-color: var(--fg-muted); }
     .btn:disabled { opacity: 0.4; }
     .btn-primary { background: var(--accent); border-color: var(--accent); color: var(--accent-on); }
-    .btn-primary:hover:not(:disabled) { background: #fff07f; border-color: #fff07f; }
+    .btn-primary:hover:not(:disabled) { background: var(--accent); border-color: var(--accent); filter: brightness(1.1); }
     .btn-danger { background: transparent; border-color: var(--bad); color: var(--bad); }
     .btn-danger:hover:not(:disabled) { background: var(--bad); border-color: var(--bad); color: #1a0603; }
     .btn-quiet { background: transparent; border-color: transparent; color: var(--fg-muted); }
@@ -121,12 +161,12 @@ button:disabled { cursor: not-allowed; }
     .chip-group > .chip + .chip { margin-left: -1px; }
 }
 
-/* Tier fills. Text color is chosen per tier so each pair keeps its contrast on both surfaces. */
-.t-S { background-color: var(--tier-s); color: var(--on-s); }
-.t-A { background-color: var(--tier-a); color: var(--on-a); }
-.t-B { background-color: var(--tier-b); color: var(--on-b); }
-.t-C { background-color: var(--tier-c); color: var(--on-c); }
-.t-D { background-color: var(--tier-d); color: var(--on-d); }
+/* Tier fills. */
+.t-S { background-color: var(--tier-s); color: var(--on-tier); }
+.t-A { background-color: var(--tier-a); color: var(--on-tier); }
+.t-B { background-color: var(--tier-b); color: var(--on-tier); }
+.t-C { background-color: var(--tier-c); color: var(--on-tier); }
+.t-D { background-color: var(--tier-d); color: var(--on-tier); }
 .t-none { background-color: transparent; color: var(--fg-faint); box-shadow: inset 0 0 0 1px var(--line-strong); }
 .sheet .t-none { color: var(--sheet-muted); box-shadow: inset 0 0 0 1px var(--sheet-line); }
 
@@ -142,7 +182,7 @@ button:disabled { cursor: not-allowed; }
 .pentagon { clip-path: polygon(50% 0, 100% 38%, 82% 100%, 18% 100%, 0 38%); }
 
 .slot-active { animation: pulseRing 1.6s ease-in-out infinite; box-shadow: 0 0 0 2px var(--accent); }
-.drop-target { box-shadow: 0 0 0 2px var(--accent); background-color: rgba(255, 225, 77, 0.12); }
+.drop-target { box-shadow: 0 0 0 2px var(--accent); background-color: color-mix(in srgb, var(--accent) 12%, transparent); }
 
 /* Hexagon chart text. Paper-colored outlines knock the ring out behind the labels. */
 .hex-name { font-family: 'Barlow Condensed', 'Arial Narrow', Arial, sans-serif; font-weight: 700; font-size: 21px; letter-spacing: 0.05em; text-transform: uppercase; fill: var(--sheet-ink); paint-order: stroke; stroke: var(--sheet); stroke-width: 7px; stroke-linejoin: round; }
@@ -165,9 +205,18 @@ button:disabled { cursor: not-allowed; }
 .sheet-btn { display: inline-flex; align-items: center; justify-content: center; min-height: 2.25rem; padding: 0 0.875rem; border: 2px solid var(--sheet-ink); background: transparent; color: var(--sheet-ink); font-family: 'Barlow Condensed', 'Arial Narrow', Arial, sans-serif; font-weight: 700; font-size: 0.875rem; letter-spacing: 0.06em; text-transform: uppercase; white-space: nowrap; transition: background-color 0.12s, color 0.12s; }
 .sheet-btn:hover { background: var(--sheet-tone); }
 .sheet-btn-solid { background: var(--sheet-ink); color: var(--sheet); }
-.sheet-btn-solid:hover { background: #33343d; }
+.sheet-btn-solid:hover { background: var(--sheet-ink); filter: brightness(0.88); }
 
 /* Each corner of the hexagon is a button. The chosen hero's name sits on an ink tab. */
 .hex-axis { cursor: pointer; outline: none; }
 .hex-axis:focus-visible .hex-name { text-decoration: underline; }
 .hex-name-on { fill: var(--sheet); stroke: none; }
+
+/* Mic level meter: a row of segments that fills as you speak. */
+.mic-meter { position: relative; overflow: hidden; background-color: var(--ink-4); }
+.mic-meter-fill { position: absolute; inset: 0; transform-origin: left; transform: scaleX(0); background-color: var(--accent); }
+.mic-meter-peak { position: absolute; top: 0; bottom: 0; left: 0; width: 2px; background-color: var(--fg); }
+.mic-meter-ticks { position: absolute; inset: 0; background-image: repeating-linear-gradient(90deg, transparent 0 5px, var(--ink-2) 5px 7px); }
+
+@keyframes listenPulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.35; } }
+.listen-dot { animation: listenPulse 1.4s ease-in-out infinite; }

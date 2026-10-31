@@ -1,7 +1,7 @@
 import { test } from 'vitest';
 import assert from 'node:assert/strict';
 import { HEROES, LANES } from '../src/data/heroes.js';
-import { filterHeroes } from '../src/lib/heroFilter.js';
+import { filterHeroes, bulkAddOptions } from '../src/lib/heroFilter.js';
 
 const names = (heroes) => heroes.map((hero) => hero.name);
 
@@ -27,4 +27,17 @@ test('filterHeroes hides heroes by id', () => {
 
 test('filterHeroes combines lane and search', () => {
   assert.deepEqual(names(filterHeroes(HEROES, { lane: LANES.ROAM, search: 'tig' })), ['Tigreal']);
+});
+
+test('bulkAddOptions lists heroes by role, speciality and lane, with who matches', () => {
+  const sets = bulkAddOptions([
+    { id: 'ling', lanes: ['Jungling'], roles: ['Assassin'], specialities: ['Chase', 'Burst'] },
+    { id: 'tigreal', lanes: ['Roaming'], roles: ['Tank'], specialities: ['Crowd Control'] },
+    { id: 'chou', lanes: ['Roaming', 'Exp Lane'], roles: ['Fighter'], specialities: ['Crowd Control'] },
+  ]);
+  const find = (label) => sets.flatMap((set) => set.options).find((option) => option.label === label);
+  assert.deepEqual(sets.map((set) => set.label), ['Role', 'Speciality', 'Lane']);
+  assert.deepEqual(find('Crowd Control').heroIds, ['tigreal', 'chou']);
+  assert.deepEqual(find('Assassin').heroIds, ['ling']);
+  assert.deepEqual(find('Roaming').heroIds, ['tigreal', 'chou']);
 });

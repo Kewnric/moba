@@ -153,3 +153,32 @@ test('removeJungler also drops their group ratings', () => {
   const next = dataReducer(withGroups(), { type: 'removeJungler', junglerId: 'ling' });
   assert.deepEqual(next.groupRatings, {});
 });
+
+test('setTiers rates several heroes in one step, keeping notes, and skips the jungler itself', () => {
+  const next = dataReducer(withGroups(), { type: 'setTiers', junglerId: 'ling', enemyIds: ['tigreal', 'nana', 'ling'], tier: 'S' });
+  assert.deepEqual(next.matchups.ling.tigreal, { tier: 'S', quickNote: 'Kite ult' });
+  assert.deepEqual(next.matchups.ling.nana, { tier: 'S' });
+  assert.equal(next.matchups.ling.ling, undefined);
+});
+
+test('setTiers ignores tiers that do not exist', () => {
+  const before = withGroups();
+  assert.equal(dataReducer(before, { type: 'setTiers', junglerId: 'ling', enemyIds: ['nana'], tier: 'X' }), before);
+});
+
+test('clearTiers unrates several heroes in one step, keeping notes', () => {
+  const next = dataReducer(withGroups(), { type: 'clearTiers', junglerId: 'ling', enemyIds: ['tigreal', 'miya'] });
+  assert.deepEqual(next.matchups.ling, { tigreal: { quickNote: 'Kite ult' } });
+});
+
+test('addGroupHeroes adds many heroes once and sets no ratings', () => {
+  const next = dataReducer(withGroups(), { type: 'addGroupHeroes', groupId: 'blink', heroIds: ['harley', 'moskov', 'nana'] });
+  assert.deepEqual(next.skillGroups[0].heroIds, ['harley', 'moskov', 'nana']);
+  assert.deepEqual(next.matchups, withGroups().matchups);
+  assert.deepEqual(next.groupRatings, withGroups().groupRatings);
+});
+
+test('setNotes saves both notes in one step and removes blank ones', () => {
+  const next = dataReducer(withGroups(), { type: 'setNotes', junglerId: 'ling', enemyId: 'tigreal', quickNote: '', comment: 'Wait for ult' });
+  assert.deepEqual(next.matchups.ling.tigreal, { tier: 'A', comment: 'Wait for ult' });
+});

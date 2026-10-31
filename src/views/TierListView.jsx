@@ -1,9 +1,10 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { HEROES } from '../data/heroes.js';
 import { TIERS, TIER_COLORS, TIER_LABELS, TIER_POINTS } from '../data/tiers.js';
 import { filterHeroes } from '../lib/heroFilter.js';
 import { categoriesOf, groupsOfHero } from '../lib/skillGroups.js';
 import { Icons } from '../components/Icons.jsx';
+import ComfortPage from '../components/ComfortPage.jsx';
 import HeroAvatar, { heroName } from '../components/HeroAvatar.jsx';
 import { EmptyState, LaneChips, SearchField, TierButtons } from '../components/ui.jsx';
 
@@ -21,7 +22,7 @@ const dragKind = (e) => {
     return null;
 };
 
-function RosterRail({ junglers, comfort, tiersByJungler, selectedId, onSelect, onAdd }) {
+function RosterRail({ junglers, comfort, tiersByJungler, selectedId, onSelect, onAdd, comfortOpen, onOpenComfort }) {
     const [search, setSearch] = useState('');
     const query = search.trim().toLowerCase();
     const sorted = [...junglers]
@@ -35,15 +36,19 @@ function RosterRail({ junglers, comfort, tiersByJungler, selectedId, onSelect, o
                     <span className="tab-cut">Junglers · {junglers.length}</span>
                     <button type="button" onClick={onAdd} aria-label="Add a jungler to your roster" title="Add a jungler" className="btn !min-h-[2rem] !px-2"><Icons.Plus size={15} /></button>
                 </div>
+                <button type="button" aria-pressed={comfortOpen} onClick={onOpenComfort} className={`btn w-full ${comfortOpen ? 'btn-primary' : ''}`}><Icons.Zap size={14} /> Set comfort</button>
                 <SearchField value={search} onChange={setSearch} placeholder="Find" label="Find a jungler" />
             </div>
             <ul className="flex lg:block gap-1 overflow-x-auto lg:overflow-x-visible lg:overflow-y-auto lg:flex-1 scroll-thin scrollbar-hide lg:scrollbar-auto p-1.5 lg:p-0">
                 <li className="lg:hidden shrink-0">
                     <button type="button" onClick={onAdd} aria-label="Add a jungler to your roster" className="btn w-12 h-12 !px-0"><Icons.Plus size={16} /></button>
                 </li>
+                <li className="lg:hidden shrink-0">
+                    <button type="button" aria-pressed={comfortOpen} onClick={onOpenComfort} aria-label="Set comfort" title="Set comfort" className={`btn w-12 h-12 !px-0 ${comfortOpen ? 'btn-primary' : ''}`}><Icons.Zap size={16} /></button>
+                </li>
                 {sorted.map((id) => {
                     const rated = Object.keys(tiersByJungler[id] || {}).length;
-                    const selected = id === selectedId;
+                    const selected = id === selectedId && !comfortOpen;
                     return (
                         <li key={id} className="shrink-0">
                             <button type="button" onClick={() => onSelect(id)} aria-current={selected ? 'true' : undefined}
@@ -68,19 +73,20 @@ function RosterRail({ junglers, comfort, tiersByJungler, selectedId, onSelect, o
 }
 
 // A hero in a tier row. A dashed outline and tag mean the tier comes from a skill group.
-function HeroTile({ heroId, rating, note, onDragStart, onDragEnd, onTap }) {
+function HeroTile({ heroId, rating, note, selected, onDragStart, onDragEnd, onTap }) {
     const fromGroup = rating.source === 'group';
     const title = fromGroup
         ? `${heroName(heroId)}: ${TIER_LABELS[rating.tier]}, from ${rating.groupName}. Tap to rate this hero directly.`
         : `${heroName(heroId)}: ${TIER_LABELS[rating.tier]}${rating.overrides ? `. Your rating replaces ${rating.overrides.groupName} (${rating.overrides.tier}).` : ''}`;
     return (
-        <button type="button" draggable onDragStart={(e) => onDragStart(e, heroId)} onDragEnd={onDragEnd} onClick={() => onTap(heroId)} title={title}
+        <button type="button" draggable onDragStart={(e) => onDragStart(e, heroId)} onDragEnd={onDragEnd} onClick={(e) => onTap(heroId, e)} title={title} aria-pressed={selected}
             className="relative w-[56px] lg:w-[60px] text-center cursor-grab active:cursor-grabbing">
-            <div className={`relative ${fromGroup ? 'outline outline-1 outline-dashed outline-fg-muted -outline-offset-1' : ''}`}>
+            <div className={`relative ${selected ? 'outline outline-2 outline-accent' : fromGroup ? 'outline outline-1 outline-dashed outline-fg-muted -outline-offset-1' : ''}`}>
                 <HeroAvatar heroId={heroId} className="w-full aspect-square pointer-events-none" />
                 {fromGroup && <span className="absolute bottom-0 inset-x-0 text-[10.5px] leading-[14px] font-semibold text-center truncate px-0.5 bg-ink/90 text-fg">{rating.groupName}</span>}
                 {rating.overrides && <span className="absolute top-0 right-0 w-2.5 h-2.5 bg-accent" aria-hidden="true" />}
                 {note && <span className="absolute top-0 left-0 w-4 h-4 flex items-center justify-center bg-ink/90 text-accent"><Icons.MessageSquare size={10} /></span>}
+                {selected && <span className="absolute top-0 right-0 w-4 h-4 flex items-center justify-center bg-accent text-accent-on"><Icons.Check size={11} /></span>}
             </div>
             <span className="block text-[11.5px] leading-tight text-fg-muted truncate mt-0.5">{heroName(heroId)}</span>
         </button>
@@ -99,7 +105,7 @@ function GroupChip({ group, onDragStart, onDragEnd, onRemove }) {
     );
 }
 
-function TierRow({ tier, groups, heroes, notes, isDropTarget, dropProps, chipDrag, onRemoveGroup, heroDrag, onHeroTap, quick, onToggleQuick }) {
+function TierRow({ tier, groups, heroes, notes, selectedIds, isDropTarget, dropProps, chipDrag, onRemoveGroup, heroDrag, onHeroTap, quick, onToggleQuick }) {
     return (
         <div {...dropProps} className={`flex border transition-colors ${isDropTarget ? 'border-accent drop-target' : 'border-line'}`}>
             <button type="button" onClick={onToggleQuick} aria-pressed={quick} title={`Tap heroes to rate them ${TIER_LABELS[tier]}`}
@@ -109,7 +115,7 @@ function TierRow({ tier, groups, heroes, notes, isDropTarget, dropProps, chipDra
             </button>
             <div className="flex-1 min-w-0 p-2 flex flex-wrap gap-2 content-start min-h-[92px]">
                 {groups.map((group) => <GroupChip key={group.id} group={group} onDragStart={chipDrag.onStart} onDragEnd={chipDrag.onEnd} onRemove={onRemoveGroup} />)}
-                {heroes.map(([heroId, rating]) => <HeroTile key={heroId} heroId={heroId} rating={rating} note={notes[heroId] && (notes[heroId].quickNote || notes[heroId].comment)} onDragStart={heroDrag.onStart} onDragEnd={heroDrag.onEnd} onTap={onHeroTap} />)}
+                {heroes.map(([heroId, rating]) => <HeroTile key={heroId} heroId={heroId} rating={rating} note={notes[heroId] && (notes[heroId].quickNote || notes[heroId].comment)} selected={selectedIds.includes(heroId)} onDragStart={heroDrag.onStart} onDragEnd={heroDrag.onEnd} onTap={onHeroTap} />)}
                 {!groups.length && !heroes.length && <span className="self-center w-full text-center text-sm text-fg-faint pointer-events-none">{isDropTarget ? `Drop to rate ${TIER_LABELS[tier]}` : 'Drop a skill group or hero here'}</span>}
             </div>
         </div>
@@ -136,7 +142,7 @@ function GroupCard({ group, tier, junglerName, onDragStart, onDragEnd, onSetTier
     );
 }
 
-export default function TierListView({ data, tiersByJungler, junglerId, setJunglerId, dispatch, onAddJungler, onRemoveJungler, onCopyTierList, onClearTierList, onOpenMatchup, onOpenSkills }) {
+export default function TierListView({ data, tiersByJungler, junglerId, setJunglerId, page, onOpenComfort, comfortWeight, dispatch, onAddJungler, onRemoveJungler, onCopyTierList, onClearTierList, onOpenMatchup, onOpenSkills, undoLabel, onUndo }) {
     const { junglers, matchups, skillGroups = [], groupRatings = {} } = data;
     const comfort = data.comfort || {};
     const [panel, setPanel] = useState('groups');
@@ -147,6 +153,14 @@ export default function TierListView({ data, tiersByJungler, junglerId, setJungl
     const [dragOverTier, setDragOverTier] = useState(null);
     const [dragFromBoard, setDragFromBoard] = useState(false);
     const [notice, setNotice] = useState(null);
+    const [selecting, setSelecting] = useState(false);
+    const [selectedIds, setSelectedIds] = useState([]);
+
+    // A selection belongs to one jungler's list.
+    useEffect(() => {
+        setSelecting(false);
+        setSelectedIds([]);
+    }, [junglerId]);
 
     const tiers = (junglerId && tiersByJungler[junglerId]) || {};
     const notes = (junglerId && matchups[junglerId]) || {};
@@ -163,6 +177,21 @@ export default function TierListView({ data, tiersByJungler, junglerId, setJungl
             const from = rating.source === 'group' ? rating.groupName : rating.overrides.groupName;
             setNotice(`${heroName(enemyId)} keeps its tier from ${from}. Remove that group's rating, or take the hero out of the group in Skills.`);
         }
+    };
+    const stopSelecting = () => {
+        setSelecting(false);
+        setSelectedIds([]);
+    };
+    const toggleSelected = (heroId) => setSelectedIds((current) => (current.includes(heroId) ? current.filter((id) => id !== heroId) : [...current, heroId]));
+    const rateMany = (heroIds, tier) => {
+        dispatch({ type: 'setTiers', junglerId, enemyIds: heroIds, tier });
+        stopSelecting();
+    };
+    const unrateMany = (heroIds) => {
+        dispatch({ type: 'clearTiers', junglerId, enemyIds: heroIds });
+        const kept = heroIds.filter((heroId) => tiers[heroId] && (tiers[heroId].source === 'group' || tiers[heroId].overrides));
+        if (kept.length) setNotice(`${kept.length} hero${kept.length === 1 ? '' : 'es'} kept a tier from a skill group. Remove the group's rating, or take them out of the group in Skills.`);
+        stopSelecting();
     };
     const setGroupTier = (groupId, tier) => dispatch({ type: 'setGroupTier', junglerId, groupId, tier });
     const clearGroupTier = (groupId) => dispatch({ type: 'clearGroupTier', junglerId, groupId });
@@ -197,7 +226,11 @@ export default function TierListView({ data, tiersByJungler, junglerId, setJungl
             if (!kind) return;
             e.preventDefault();
             if (kind === 'group') setGroupTier(e.dataTransfer.getData(GROUP_DRAG), tier);
-            else rate(e.dataTransfer.getData(HERO_DRAG), tier);
+            else {
+                const heroId = e.dataTransfer.getData(HERO_DRAG);
+                if (selectedIds.includes(heroId) && selectedIds.length > 1) rateMany(selectedIds, tier);
+                else rate(heroId, tier);
+            }
             endDrag();
         },
     });
@@ -207,12 +240,20 @@ export default function TierListView({ data, tiersByJungler, junglerId, setJungl
         if (!kind || !dragFromBoard) return;
         e.preventDefault();
         if (kind === 'group') clearGroupTier(e.dataTransfer.getData(GROUP_DRAG));
-        else unrate(e.dataTransfer.getData(HERO_DRAG));
+        else {
+            const heroId = e.dataTransfer.getData(HERO_DRAG);
+            if (selectedIds.includes(heroId) && selectedIds.length > 1) unrateMany(selectedIds);
+            else unrate(heroId);
+        }
         endDrag();
     };
 
-    const handleHeroTap = (heroId) => {
-        if (quickTier === UNRATE) unrate(heroId);
+    const handleHeroTap = (heroId, e) => {
+        if (selecting || (e && (e.ctrlKey || e.metaKey))) {
+            setSelecting(true);
+            setQuickTier(null);
+            toggleSelected(heroId);
+        } else if (quickTier === UNRATE) unrate(heroId);
         else if (quickTier) rate(heroId, quickTier);
         else onOpenMatchup(heroId);
     };
@@ -222,7 +263,16 @@ export default function TierListView({ data, tiersByJungler, junglerId, setJungl
         setPanel('heroes');
     };
 
-    const roster = <RosterRail junglers={junglers} comfort={comfort} tiersByJungler={tiersByJungler} selectedId={junglerId} onSelect={setJunglerId} onAdd={onAddJungler} />;
+    const roster = <RosterRail junglers={junglers} comfort={comfort} tiersByJungler={tiersByJungler} selectedId={junglerId} onSelect={setJunglerId} onAdd={onAddJungler} comfortOpen={page === 'comfort'} onOpenComfort={onOpenComfort} />;
+
+    if (page === 'comfort') {
+        return (
+            <div className="flex-1 min-w-0 min-h-0 flex flex-col lg:flex-row animate-fadeIn">
+                {roster}
+                <ComfortPage junglers={junglers} comfort={comfort} comfortWeight={comfortWeight} onOpenJungler={setJunglerId} onSetComfort={(id, level) => dispatch({ type: 'setComfort', junglerId: id, comfort: level })} />
+            </div>
+        );
+    }
 
     if (!junglerId) {
         return (
@@ -258,7 +308,9 @@ export default function TierListView({ data, tiersByJungler, junglerId, setJungl
                                 ))}
                                 <span className="text-xs text-fg-muted ml-1 w-[5.5rem]">{comfortLevel ? COMFORT_LABELS[comfortLevel] : 'Not set'}</span>
                             </div>
-                            <div className="flex items-center gap-1 ml-auto">
+                            <div className="flex flex-wrap items-center gap-1 ml-auto">
+                                <button type="button" onClick={onUndo} disabled={!undoLabel} title={undoLabel ? `Undo: ${undoLabel}` : 'Nothing to undo'} className="btn btn-quiet"><Icons.RotateCcw size={14} /> Undo</button>
+                                <button type="button" aria-pressed={selecting} onClick={() => (selecting ? stopSelecting() : (setSelecting(true), setQuickTier(null)))} title="Select several heroes, then move them together" className={`btn btn-quiet ${selecting ? '!text-accent' : ''}`}><Icons.Check size={14} /> Select</button>
                                 <button type="button" onClick={onCopyTierList} className="btn btn-quiet" title="Copy another jungler's tier list onto this one"><Icons.Copy size={14} /> Copy from</button>
                                 <button type="button" onClick={onClearTierList} className="btn btn-quiet" disabled={ratedCount === 0}>Clear</button>
                                 <button type="button" onClick={onRemoveJungler} aria-label={`Remove ${heroName(junglerId)} from your roster`} title="Remove from roster" className="btn btn-quiet !px-2"><Icons.Trash2 size={14} /></button>
@@ -275,12 +327,28 @@ export default function TierListView({ data, tiersByJungler, junglerId, setJungl
                         </div>
                     )}
 
+                    {selecting && (
+                        <div role="toolbar" aria-label="Selected heroes" className="sticky top-0 z-10 mx-3 lg:mx-5 mt-3 border border-accent bg-ink-3 px-3 py-2 animate-fadeIn">
+                            <div className="flex flex-wrap items-center gap-1.5">
+                                <span className="label text-accent mr-1 tabular-nums">{selectedIds.length} selected</span>
+                                {TIERS.map((tier) => (
+                                    <button key={tier} type="button" disabled={!selectedIds.length} title={`Rate selected heroes ${TIER_LABELS[tier]}`} onClick={() => rateMany(selectedIds, tier)} className={`w-8 h-8 display text-[15px] disabled:opacity-40 ${TIER_COLORS[tier]}`}>{tier}</button>
+                                ))}
+                                <button type="button" disabled={!selectedIds.length} onClick={() => unrateMany(selectedIds)} className="chip disabled:opacity-40">Unrate</button>
+                                {panel === 'heroes' && <button type="button" onClick={() => setSelectedIds(heroesInPanel.map((hero) => hero.id))} className="chip">Select all shown</button>}
+                                <button type="button" onClick={stopSelecting} className="btn btn-quiet !min-h-[2rem] ml-auto">Done</button>
+                            </div>
+                            <p className="text-xs text-fg-muted mt-1.5">Tap heroes on the board or in the Heroes list. With a mouse, drag any selected hero to move them all, or Ctrl+click to start selecting.</p>
+                        </div>
+                    )}
+
                     <div className="p-3 lg:p-5 space-y-1.5">
                         {TIERS.map((tier) => (
                             <TierRow key={tier} tier={tier}
                                 groups={skillGroups.filter((group) => ownGroups[group.id] === tier)}
                                 heroes={Object.entries(tiers).filter(([, rating]) => rating.tier === tier).sort(([a], [b]) => heroName(a).localeCompare(heroName(b)))}
                                 notes={notes}
+                                selectedIds={selectedIds}
                                 isDropTarget={dragOverTier === tier}
                                 dropProps={tierDropProps(tier)}
                                 chipDrag={{ onStart: startDrag(GROUP_DRAG, true), onEnd: endDrag }}
@@ -345,8 +413,8 @@ export default function TierListView({ data, tiersByJungler, junglerId, setJungl
                             <div className="lg:flex-1 lg:min-h-0 lg:overflow-y-auto scroll-thin p-2">
                                 <div className="grid grid-cols-[repeat(auto-fill,minmax(64px,1fr))] gap-1.5">
                                     {heroesInPanel.map((hero) => (
-                                        <button key={hero.id} type="button" draggable onDragStart={(e) => startDrag(HERO_DRAG, false)(e, hero.id)} onDragEnd={endDrag} onClick={() => handleHeroTap(hero.id)} title={hero.name}
-                                            className={`p-1 text-center cursor-grab active:cursor-grabbing transition-colors hover:bg-ink-4 ${quickTier && quickTier !== UNRATE ? 'outline outline-1 -outline-offset-1 outline-accent' : ''}`}>
+                                        <button key={hero.id} type="button" draggable aria-pressed={selectedIds.includes(hero.id)} onDragStart={(e) => startDrag(HERO_DRAG, false)(e, hero.id)} onDragEnd={endDrag} onClick={(e) => handleHeroTap(hero.id, e)} title={hero.name}
+                                            className={`p-1 text-center cursor-grab active:cursor-grabbing transition-colors hover:bg-ink-4 ${selectedIds.includes(hero.id) ? 'bg-accent text-accent-on' : quickTier && quickTier !== UNRATE ? 'outline outline-1 -outline-offset-1 outline-accent' : ''}`}>
                                             <HeroAvatar heroId={hero.id} className="w-full aspect-square pointer-events-none" />
                                             <span className="block text-[11.5px] leading-tight text-fg-muted truncate mt-1">{hero.name}</span>
                                         </button>

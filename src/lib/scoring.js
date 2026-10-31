@@ -64,8 +64,8 @@ function riskFor(tiers, openIds, enemyIds, picksLeft) {
   };
 }
 
-// Ranks your junglers for the current enemy lineup. Before the first enemy pick (mode "blind") the matchup
-// part is your average rating against every hero still open.
+// Ranks your junglers for the current enemy lineup. Until the first enemy pick (mode "waiting") there's nothing
+// to score against, so nothing is ranked or recommended.
 export function scoreJunglers({
   junglerIds,
   enemyIds = [],
@@ -76,11 +76,13 @@ export function scoreJunglers({
   comfort = {},
   comfortWeight = DEFAULT_COMFORT_WEIGHT,
   onlyPool = false,
+  safeOnly = false,
   heroIds = [],
 }) {
+  if (!enemyIds.length) return { mode: 'waiting', ranked: [], unavailable: [], entries: [], top: null, hiddenCounters: 0 };
+
   const taken = new Set([...enemyIds, ...unavailableIds]);
   const picksLeft = Math.max(0, TEAM_SIZE - enemyIds.length);
-  const mode = enemyIds.length ? 'counter' : 'blind';
   const share = comfortWeight / 100;
 
   const entries = Array.from(new Set(junglerIds))
@@ -89,9 +91,7 @@ export function scoreJunglers({
       const tiers = tiersByJungler[id] || {};
       const openIds = heroIds.filter((heroId) => !taken.has(heroId) && heroId !== id);
       const lineup = matchupsFor(id, enemyIds, enemyJunglerId, tiers, notesByJungler[id] || {});
-      const field = openIds.map((heroId) => pointsFor(tiers[heroId]));
-      const fieldAverage = field.length ? field.reduce((sum, points) => sum + points, 0) / field.length : UNRATED_POINTS;
-      const matchupScore = round1(mode === 'counter' ? weightedAverage(lineup) : fieldAverage);
+      const matchupScore = round1(weightedAverage(lineup));
       const comfortPart = comfortScore(comfort[id]);
       const total = round1(matchupScore * (1 - share) + comfortPart * share);
       return {
@@ -102,15 +102,14 @@ export function scoreJunglers({
         comfortScore: comfortPart,
         comfort: isComfortRating(comfort[id]) ? comfort[id] : null,
         matchups: lineup,
-        coverage: mode === 'counter'
-          ? { rated: lineup.filter((matchup) => matchup.tier).length, total: lineup.length }
-          : { rated: openIds.filter((heroId) => tiers[heroId]).length, total: openIds.length },
+        coverage: { rated: lineup.filter((matchup) => matchup.tier).length, total: lineup.length },
         risk: riskFor(tiers, openIds, enemyIds, picksLeft),
       };
     });
 
-  const ranked = entries
-    .filter((entry) => !taken.has(entry.id))
+  const available = entries.filter((entry) => !taken.has(entry.id));
+  const ranked = available
+    .filter((entry) => !safeOnly || entry.risk.facing.length === 0)
     .sort((a, b) =>
       (b.total - a.total) ||
       (comfortValue(b) - comfortValue(a)) ||
@@ -118,10 +117,12 @@ export function scoreJunglers({
       a.id.localeCompare(b.id));
 
   return {
-    mode,
+    mode: 'counter',
     ranked,
     unavailable: entries.filter((entry) => taken.has(entry.id)),
+    entries,
     top: ranked[0] || null,
+    hiddenCounters: available.length - ranked.length,
   };
 }
 

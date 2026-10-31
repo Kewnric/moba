@@ -5,6 +5,7 @@ import { lineupSkills } from '../lib/skillGroups.js';
 import { Icons } from '../components/Icons.jsx';
 import { heroName } from '../components/HeroAvatar.jsx';
 import DraftBoard from '../components/DraftBoard.jsx';
+import GamePlanCard from '../components/GamePlanCard.jsx';
 import HeroPicker from '../components/HeroPicker.jsx';
 import RankingPanel from '../components/RankingPanel.jsx';
 import StatSheet from '../components/StatSheet.jsx';
@@ -24,7 +25,7 @@ const isHeroDrag = (e) => Array.from(e.dataTransfer.types).includes(HERO_TYPE);
 
 // The live draft: enemy slots on top, your options and the chosen jungler's stat sheet under them, every jungler ranked beside it.
 // Heroes can be tapped into the highlighted slot or dragged onto any slot; dragging a slot onto the hero list removes it.
-export default function DraftView({ draftState, enemyOnly, defaultBanCount, comfortWeight, scoring, skillGroups, banIdeas, allyJunglers, onlyPool, setOnlyPool, hasPool, onSetTier, onSetComfort, onOpenTierLists, resultLog }) {
+export default function DraftView({ draftState, enemyOnly, defaultBanCount, comfortWeight, scoring, skillGroups, banIdeas, allyJunglers, onlyPool, setOnlyPool, safeOnly, setSafeOnly, hasPool, onSetTier, onSetComfort, onOpenTierLists, onOpenComfort, onEditNotes, resultLog, voice, voiceBar }) {
     const { draft, activeSlot } = draftState;
     const [viewedId, setViewedId] = useState(null);
     const [pickerOpen, setPickerOpen] = useState(false);
@@ -55,7 +56,13 @@ export default function DraftView({ draftState, enemyOnly, defaultBanCount, comf
 
     const openOption = (id) => setViewedId(top && id === top.id ? null : id);
 
+    // A locked-in jungler stays on the game plan even if a filter hides them, unless they're picked or banned.
+    const lockedEntry = draft.lockedJungler && !scoring.unavailable.some((entry) => entry.id === draft.lockedJungler)
+        ? scoring.entries.find((entry) => entry.id === draft.lockedJungler) || null
+        : null;
+
     const selectEntry = (id) => {
+        if (lockedEntry) draftState.setLocked(null);
         openOption(id);
         // On phones and small windows the list sits under the sheet, so bring the sheet into view.
         if (window.matchMedia('(max-width: 1279px)').matches && sheetRef.current) sheetRef.current.scrollIntoView({ behavior: 'smooth', block: 'start' });
@@ -121,11 +128,12 @@ export default function DraftView({ draftState, enemyOnly, defaultBanCount, comf
     return (
         <div className="flex-1 min-w-0 min-h-0 flex">
             <HeroPicker open={pickerOpen} onClose={() => setPickerOpen(false)} activeSlot={activeSlot} takenLabels={takenLabels} banIdeas={banIdeas} onPick={pick}
+                onChooseEnemySlot={(index) => draftState.selectSlot({ group: 'enemy', index })} onUndo={draftState.undo}
                 dragging={draggingFromSlot} onDragStart={(e, heroId) => startDrag(e, FROM_PICKER, heroId)} onDragEnd={endDrag} onDropBack={handleDropBack} />
 
             <div className="flex-1 min-w-0 min-h-0 overflow-y-auto scroll-thin xl:overflow-hidden xl:flex">
                 <div className="xl:flex-1 xl:min-w-0 xl:overflow-y-auto scroll-thin">
-                    <DraftBoard draftState={draftState} enemyOnly={enemyOnly} defaultBanCount={defaultBanCount} drag={drag} onSelectSlot={selectSlot} skills={skills} />
+                    <DraftBoard draftState={draftState} enemyOnly={enemyOnly} defaultBanCount={defaultBanCount} drag={drag} onSelectSlot={selectSlot} skills={skills} voice={voice} voiceBar={voiceBar} />
 
                     {allyJunglers.length > 0 && (
                         <p role="status" className="mx-3 lg:mx-5 mt-3 flex items-start gap-2 border border-accent px-3 py-2 text-sm text-fg">
@@ -135,24 +143,34 @@ export default function DraftView({ draftState, enemyOnly, defaultBanCount, comf
                     )}
 
                     <div ref={sheetRef} className="p-3 lg:p-5 scroll-mt-32">
-                        {viewed ? (
-                            <StatSheet entry={viewed} top={top} rank={rankOfViewed} mode={scoring.mode} options={options} onSelectOption={openOption} comfortWeight={comfortWeight} isTopOverall={!top || viewed.id === top.id}
-                                onBackToTop={() => setViewedId(null)} resultLog={resultLog}
+                        {scoring.mode === 'waiting' ? (
+                            <div className="panel p-8 text-center space-y-3 animate-fadeIn">
+                                <p className="display text-3xl">Add the first enemy pick</p>
+                                <p className="text-sm text-fg-muted">Your options show up once there's an enemy to score them against.</p>
+                                <button type="button" onClick={() => setPickerOpen(true)} className="btn btn-primary lg:hidden">Add enemy</button>
+                            </div>
+                        ) : lockedEntry ? (
+                            <GamePlanCard entry={lockedEntry} skills={skills} onUnlock={() => draftState.setLocked(null)} onEditNotes={(enemyId) => onEditNotes(lockedEntry.id, enemyId)} resultLog={resultLog} />
+                        ) : viewed ? (
+                            <StatSheet entry={viewed} top={top} rank={rankOfViewed} options={options} onSelectOption={openOption} comfortWeight={comfortWeight} hasPool={hasPool} isTopOverall={!top || viewed.id === top.id}
+                                onBackToTop={() => setViewedId(null)} onLockIn={draftState.setLocked} onOpenComfort={onOpenComfort} resultLog={resultLog}
                                 // An edit can reorder the ranking, so stay on this jungler instead of jumping to a new top pick.
                                 onSetTier={(matchup, tier) => { setViewedId(viewed.id); onSetTier(viewed.id)(matchup, tier); }}
                                 onSetComfort={(junglerId, level) => { setViewedId(viewed.id); onSetComfort(junglerId, level); }} />
                         ) : (
                             <div className="panel p-8 text-center space-y-3">
                                 <p className="display text-2xl">No jungler left to pick</p>
-                                <p className="text-sm text-fg-muted">{onlyPool && hasPool ? 'Nobody in your pool is still available. Turn off My pool to see everyone.' : 'All of your junglers are picked or banned. Add more in Tier lists.'}</p>
-                                <button type="button" onClick={onOpenTierLists} className="btn">Open tier lists</button>
+                                <p className="text-sm text-fg-muted">{safeOnly && scoring.hiddenCounters > 0 ? 'Every available jungler has a D against this lineup. Turn off Safe picks to see them.' : onlyPool && hasPool ? 'Nobody in your pool is still available. Turn off My pool to see everyone.' : 'All of your junglers are picked or banned. Add more in Tier lists.'}</p>
+                                {safeOnly && scoring.hiddenCounters > 0
+                                    ? <button type="button" onClick={() => setSafeOnly(false)} className="btn">Turn off Safe picks</button>
+                                    : <button type="button" onClick={onOpenTierLists} className="btn">Open tier lists</button>}
                             </div>
                         )}
                     </div>
                 </div>
 
                 <div className="xl:w-[400px] 2xl:w-[432px] xl:shrink-0 xl:min-h-0">
-                    <RankingPanel scoring={scoring} enemySlots={draft.enemy} viewedId={viewed ? viewed.id : null} onSelect={selectEntry} onlyPool={onlyPool} setOnlyPool={setOnlyPool} hasPool={hasPool} onOpenTierLists={onOpenTierLists} takenLabels={takenLabels} />
+                    <RankingPanel scoring={scoring} enemySlots={draft.enemy} viewedId={viewed ? viewed.id : null} onSelect={selectEntry} onlyPool={onlyPool} setOnlyPool={setOnlyPool} safeOnly={safeOnly} setSafeOnly={setSafeOnly} hasPool={hasPool} onOpenTierLists={onOpenTierLists} takenLabels={takenLabels} />
                 </div>
             </div>
         </div>

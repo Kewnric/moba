@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import { HEROES } from '../data/heroes.js';
-import { filterHeroes } from '../lib/heroFilter.js';
+import { bulkAddOptions, filterHeroes } from '../lib/heroFilter.js';
 import { categoriesOf } from '../lib/skillGroups.js';
 import { Icons } from '../components/Icons.jsx';
 import HeroAvatar, { heroName } from '../components/HeroAvatar.jsx';
@@ -23,7 +23,36 @@ function SavedField({ label, value, onSave, list, placeholder }) {
     );
 }
 
-function GroupEditor({ group, data, categories, dispatch, onDelete, onBack }) {
+const BULK_SETS = bulkAddOptions(HEROES);
+
+// Fills a group from the game's own labels in one go. It only adds to the list and never rates anyone.
+function BulkAdd({ group, dispatch }) {
+    const [choice, setChoice] = useState('');
+    const option = BULK_SETS.flatMap((set) => set.options.map((item) => ({ ...item, key: `${set.label}:${item.value}` }))).find((item) => item.key === choice);
+    const newIds = option ? option.heroIds.filter((heroId) => !group.heroIds.includes(heroId)) : [];
+    const add = () => {
+        dispatch({ type: 'addGroupHeroes', groupId: group.id, heroIds: newIds });
+        setChoice('');
+    };
+    return (
+        <div>
+            <div className="flex items-center gap-2">
+                <select aria-label="Add every hero with a role, speciality or lane" className="field !min-h-[2.25rem] flex-1 min-w-0" value={choice} onChange={(e) => setChoice(e.target.value)}>
+                    <option value="">Bulk add: every hero with...</option>
+                    {BULK_SETS.map((set) => (
+                        <optgroup key={set.label} label={set.label}>
+                            {set.options.map((item) => <option key={item.value} value={`${set.label}:${item.value}`}>{item.label} ({item.heroIds.length})</option>)}
+                        </optgroup>
+                    ))}
+                </select>
+                <button type="button" disabled={!newIds.length} onClick={add} className="btn shrink-0">{option ? `Add ${newIds.length}` : 'Add'}</button>
+            </div>
+            <p className="text-xs text-fg-faint mt-1">This only fills the list, using the game's own labels. It never rates anyone. Tap out any hero that doesn't fit.</p>
+        </div>
+    );
+}
+
+function GroupEditor({ group, data, categories, dispatch, onDelete, onBack, undoLabel, onUndo }) {
     const [search, setSearch] = useState('');
     const [lane, setLane] = useState('All');
     const members = useMemo(() => new Set(group.heroIds), [group.heroIds]);
@@ -36,7 +65,10 @@ function GroupEditor({ group, data, categories, dispatch, onDelete, onBack }) {
 
     return (
         <div className="p-3 lg:p-5 space-y-4 max-w-4xl">
-            <button type="button" onClick={onBack} className="btn btn-quiet lg:hidden !px-1"><span aria-hidden="true">←</span> All groups</button>
+            <div className="flex items-center justify-between gap-2 lg:hidden">
+                <button type="button" onClick={onBack} className="btn btn-quiet !px-1"><span aria-hidden="true">←</span> All groups</button>
+                <button type="button" onClick={onUndo} disabled={!undoLabel} title={undoLabel ? `Undo: ${undoLabel}` : 'Nothing to undo'} className="btn btn-quiet !px-1"><Icons.RotateCcw size={14} /> Undo</button>
+            </div>
 
             <div className="grid grid-cols-1 sm:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_auto] gap-2 items-end">
                 <SavedField label="Group name" value={group.name} onSave={(name) => dispatch({ type: 'updateGroup', groupId: group.id, name })} />
@@ -61,6 +93,7 @@ function GroupEditor({ group, data, categories, dispatch, onDelete, onBack }) {
                         ))}
                         {group.heroIds.length === 0 && <span className="text-sm text-fg-faint self-center">No heroes yet. Tap some below.</span>}
                     </div>
+                    <BulkAdd group={group} dispatch={dispatch} />
                     <SearchField value={search} onChange={setSearch} placeholder="Search heroes" label="Search heroes" />
                     <LaneChips value={lane} onChange={setLane} />
                 </div>
@@ -106,7 +139,7 @@ function GroupEditor({ group, data, categories, dispatch, onDelete, onBack }) {
 }
 
 // Your skill categories: create groups of heroes with similar skills, then rate them in one move.
-export default function SkillGroupsView({ data, selectedId, setSelectedId, dispatch, onNewGroup, onDeleteGroup }) {
+export default function SkillGroupsView({ data, selectedId, setSelectedId, dispatch, onNewGroup, onDeleteGroup, undoLabel, onUndo }) {
     const groups = data.skillGroups || [];
     const categories = useMemo(() => categoriesOf(groups), [groups]);
     const selected = groups.find((group) => group.id === selectedId) || null;
@@ -121,6 +154,7 @@ export default function SkillGroupsView({ data, selectedId, setSelectedId, dispa
                         <button type="button" onClick={onNewGroup} className="btn btn-primary !min-h-[2rem]"><Icons.Plus size={14} /> New</button>
                     </div>
                     <p className="text-xs text-fg-muted">Group heroes that share a skill you have to play around. Rate a group once and every hero in it gets that tier.</p>
+                    <button type="button" onClick={onUndo} disabled={!undoLabel} title={undoLabel ? `Undo: ${undoLabel}` : 'Nothing to undo'} className="btn btn-quiet !px-1"><Icons.RotateCcw size={14} /> Undo{undoLabel ? `: ${undoLabel}` : ''}</button>
                 </div>
                 <div className="flex-1 min-h-0 overflow-y-auto scroll-thin p-3 space-y-3">
                     {categories.map(({ category, groups: inCategory }) => (
@@ -152,7 +186,7 @@ export default function SkillGroupsView({ data, selectedId, setSelectedId, dispa
 
             <div className={`${selected ? 'block' : 'hidden lg:block'} flex-1 min-w-0 min-h-0 overflow-y-auto scroll-thin`}>
                 {selected ? (
-                    <GroupEditor key={selected.id} group={selected} data={data} categories={categories} dispatch={dispatch} onDelete={onDeleteGroup} onBack={() => setSelectedId(null)} />
+                    <GroupEditor key={selected.id} group={selected} data={data} categories={categories} dispatch={dispatch} onDelete={onDeleteGroup} onBack={() => setSelectedId(null)} undoLabel={undoLabel} onUndo={onUndo} />
                 ) : (
                     <div className="h-full flex items-center justify-center">
                         <EmptyState icon={Icons.Layers} title="Pick a group to edit">Add or remove heroes, rename it, or set a tier for each of your junglers.</EmptyState>

@@ -55,7 +55,7 @@ function Fact({ label, children }) {
 
 function MatchupRow({ matchup, onSetTier }) {
     return (
-        <li className="grid grid-cols-[2.25rem_minmax(0,1fr)_auto_2rem] items-center gap-x-2.5 py-2 border-t border-sheet-line">
+        <li className="grid grid-cols-[2.25rem_minmax(0,1fr)_2rem] sm:grid-cols-[2.25rem_minmax(0,1fr)_auto_2rem] items-center gap-x-2.5 gap-y-1.5 py-2 border-t border-sheet-line">
             <HeroAvatar heroId={matchup.enemyId} className="w-9 h-9" />
             <div className="min-w-0">
                 <div className="flex items-center gap-1.5 font-semibold text-sm leading-tight">
@@ -64,7 +64,9 @@ function MatchupRow({ matchup, onSetTier }) {
                 </div>
                 <div className="text-xs text-sheet-muted truncate">{sourceText(matchup)}{matchup.quickNote ? ` · ${matchup.quickNote}` : ''}</div>
             </div>
-            <TierButtons compact value={matchup.tier} inherited={matchup.source === 'group'} label={`Rate ${heroName(matchup.enemyId)}`} onChange={(tier) => onSetTier(matchup, tier)} />
+            <div className="order-last col-span-3 pl-[2.875rem] sm:order-none sm:col-span-1 sm:pl-0">
+                <TierButtons compact value={matchup.tier} inherited={matchup.source === 'group'} label={`Rate ${heroName(matchup.enemyId)}`} onChange={(tier) => onSetTier(matchup, tier)} />
+            </div>
             <span className="display text-xl text-right">{matchup.points}</span>
         </li>
     );
@@ -72,13 +74,13 @@ function MatchupRow({ matchup, onSetTier }) {
 
 function ComfortRow({ entry, onSetComfort }) {
     return (
-        <li className="grid grid-cols-[2.25rem_minmax(0,1fr)_auto_2rem] items-center gap-x-2.5 py-2 border-t border-sheet-line">
+        <li className="grid grid-cols-[2.25rem_minmax(0,1fr)_2rem] sm:grid-cols-[2.25rem_minmax(0,1fr)_auto_2rem] items-center gap-x-2.5 gap-y-1.5 py-2 border-t border-sheet-line">
             <span className="w-9 h-9 flex items-center justify-center bg-sheet-ink text-sheet"><Icons.Zap size={16} /></span>
             <div className="min-w-0">
                 <div className="font-semibold text-sm leading-tight">Comfort</div>
                 <div className="text-xs text-sheet-muted truncate">{entry.comfort ? COMFORT_LABELS[entry.comfort] : 'Not set, counts as 3'}</div>
             </div>
-            <div role="group" aria-label={`Comfort on ${heroName(entry.id)}`} className="inline-flex gap-[3px]">
+            <div role="group" aria-label={`Comfort on ${heroName(entry.id)}`} className="order-last col-span-3 pl-[2.875rem] sm:order-none sm:col-span-1 sm:pl-0 inline-flex gap-[3px]">
                 {[1, 2, 3, 4, 5].map((level) => (
                     <button key={level} type="button" aria-pressed={entry.comfort === level} title={COMFORT_LABELS[level]} onClick={() => onSetComfort(entry.id, entry.comfort === level ? null : level)}
                         className={`w-7 h-7 display text-[14px] transition-colors ${entry.comfort === level ? 'bg-sheet-ink text-sheet' : 'tier-off'}`}>{level}</button>
@@ -89,7 +91,7 @@ function ComfortRow({ entry, onSetComfort }) {
     );
 }
 
-function RiskSection({ entry }) {
+export function RiskSection({ entry }) {
     const { risk } = entry;
     const shown = risk.openCounters.slice(0, OPEN_SHOWN);
     return (
@@ -122,7 +124,7 @@ function RiskSection({ entry }) {
     );
 }
 
-function ResultLog({ entry, lastRecord, onRecord, onUndoRecord, onNewDraft }) {
+export function ResultLog({ entry, lastRecord, onRecord, onUndoRecord, onNewDraft }) {
     if (lastRecord) {
         return (
             <div className="flex flex-wrap items-center gap-2 text-sm" aria-live="polite">
@@ -161,12 +163,12 @@ const axesFor = (options) => Array.from({ length: GRAPH_OPTIONS }, (_, index) =>
 
 // The manga-style sheet: your options on the hexagon, then one jungler's ID card, every number behind its
 // score, and its risk.
-export default function StatSheet({ entry, top, rank, mode, options, comfortWeight, onSelectOption, onBackToTop, onSetTier, onSetComfort, resultLog, isTopOverall }) {
+export default function StatSheet({ entry, top, rank, options, comfortWeight, hasPool, onSelectOption, onBackToTop, onSetTier, onSetComfort, onLockIn, onOpenComfort, resultLog, isTopOverall }) {
     const axes = axesFor(options);
     const matchupShare = 100 - comfortWeight;
     const unrated = entry.coverage.total - entry.coverage.rated;
     const description = options.map((option) => `${heroName(option.id)} ${Math.round(option.total)}`).join(', ');
-    const cardLabel = isTopOverall ? (mode === 'blind' ? 'Best blind pick' : 'Top pick') : `Option ${rank}`;
+    const cardLabel = isTopOverall ? 'Top pick' : `Option ${rank}`;
 
     return (
         <section aria-label={`Stat sheet for ${heroName(entry.id)}`} className="sheet p-3 sm:p-4 lg:p-5 animate-fadeIn">
@@ -184,17 +186,23 @@ export default function StatSheet({ entry, top, rank, mode, options, comfortWeig
                 </div>
                 <div className="order-1 md:order-2">
                     <IdCard entry={entry} label={cardLabel} />
+                    <button type="button" onClick={() => onLockIn(entry.id)} className="sheet-btn sheet-btn-solid w-full mt-2 gap-1.5"><Icons.Lock size={14} /> Lock in {heroName(entry.id)}</button>
                     <dl className="mt-2 px-0.5">
                         <Fact label="Comfort">{entry.comfort ? `${entry.comfort} / 5` : 'Not set'}</Fact>
-                        <Fact label={mode === 'blind' ? 'Heroes rated' : 'Enemies rated'}>{entry.coverage.rated} / {entry.coverage.total}</Fact>
+                        <Fact label="Enemies rated">{entry.coverage.rated} / {entry.coverage.total}</Fact>
                         <Fact label="Risk"><RiskMeter risk={entry.risk} showLabel /></Fact>
                     </dl>
                 </div>
             </div>
 
             <div className="mt-3">
-                {mode === 'blind' && <p className="text-sm mb-2">No enemy picks yet. Matchups show your average rating against all {entry.coverage.total} open heroes, where anything unrated counts as Even.</p>}
-                {mode === 'counter' && unrated > 0 && (
+                {!hasPool && (
+                    <p className="text-sm mb-2 flex flex-wrap items-center gap-x-2 gap-y-1">
+                        <span>You haven't set comfort on any jungler, so comfort counts the same for all of them.</span>
+                        <button type="button" onClick={onOpenComfort} className="sheet-btn !min-h-[1.75rem] !px-2">Set comfort</button>
+                    </p>
+                )}
+                {unrated > 0 && (
                     <p className="text-sm mb-2 flex items-start gap-1.5"><Icons.Info size={15} className="shrink-0 mt-0.5" /><span>{unrated} of {entry.coverage.total} enemies {unrated === 1 ? "isn't" : "aren't"} rated for {heroName(entry.id)}, so {unrated === 1 ? 'that counts' : 'they count'} as Even. Tap a letter below to rate {unrated === 1 ? 'it' : 'them'}.</span></p>
                 )}
                 <h3 className="sr-only">Score breakdown</h3>

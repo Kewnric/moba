@@ -1,4 +1,5 @@
 import { useEffect, useId, useRef, useState } from 'react';
+import { HEROES } from '../data/heroes.js';
 import { GROUP_IDEAS } from '../data/skillGroups.js';
 import { TIER_LABELS } from '../data/tiers.js';
 import { Icons } from './Icons.jsx';
@@ -161,6 +162,25 @@ export function CopyTierListModal({ junglerName, options, onCopy, onCancel }) {
                 {options.map((option) => <option key={option.id} value={option.id}>{option.name} ({option.rated} rated)</option>)}
             </select>
             <p className="text-xs text-fg-muted mt-2">Good for junglers that play alike. This replaces all of {junglerName}'s tiers and group ratings. Their notes stay.</p>
+        </Dialog>
+    );
+}
+
+// Tells voice control what a misheard phrase meant, so it works next time.
+export function TeachVoiceModal({ phrase, onSave, onCancel }) {
+    const [heroId, setHeroId] = useState('');
+    const save = () => { if (heroId) onSave(heroId); };
+    return (
+        <Dialog title="Teach voice control" icon={Icons.Mic} onClose={onCancel} onSubmit={save}
+            footer={<>
+                <button type="button" onClick={onCancel} className="btn btn-quiet">Cancel</button>
+                <button type="submit" disabled={!heroId} className="btn btn-primary">Save</button>
+            </>}>
+            <p className="text-sm text-fg-muted mb-2">When you're heard saying <span className="font-semibold text-fg">"{phrase}"</span>, which hero did you mean?</p>
+            <select data-autofocus aria-label="Hero you meant" className="field" value={heroId} onChange={(e) => setHeroId(e.target.value)}>
+                <option value="" disabled>Choose a hero...</option>
+                {HEROES.map((hero) => <option key={hero.id} value={hero.id}>{hero.name}</option>)}
+            </select>
         </Dialog>
     );
 }

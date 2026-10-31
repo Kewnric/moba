@@ -84,6 +84,20 @@ export function summarizeHistory(history) {
   };
 }
 
+// Your record against each skill group: a game counts once for a group if any enemy that game was in it. Uses
+// the groups as they are now. Your worst matchups come first, and groups you haven't faced are left out.
+export function summarizeSkillGroups(history, skillGroups) {
+  return skillGroups
+    .map((group) => {
+      const members = new Set(group.heroIds);
+      const games = history.filter((game) => game.draft.enemy.some((heroId) => members.has(heroId)));
+      const wins = games.filter((game) => game.result === 'win').length;
+      return { group, games: games.length, wins, losses: games.length - wins, winRate: rate(wins, games.length) };
+    })
+    .filter((item) => item.games > 0)
+    .sort((a, b) => (a.winRate - b.winRate) || (b.games - a.games) || a.group.name.localeCompare(b.group.name));
+}
+
 export const tierFromWinRate = (winRate) => {
   if (winRate >= 0.7) return 'S';
   if (winRate >= 0.55) return 'A';

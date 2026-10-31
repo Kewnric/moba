@@ -11,6 +11,7 @@ import {
   reviewRatings,
   summarizeHistory,
   tierFromWinRate,
+  summarizeSkillGroups,
 } from '../src/lib/history.js';
 
 const game = (id, result, playedId, enemy, { topPickId = null, playedAt = `2026-09-${String(10 + Number(id.slice(1))).padStart(2, '0')}T12:00:00.000Z` } = {}) => ({
@@ -124,4 +125,27 @@ test('reviewRatings needs enough games before suggesting anything', () => {
   const history = [game('g1', 'win', 'ling', ['saber']), game('g2', 'win', 'ling', ['saber'])];
   assert.deepEqual(reviewRatings(history, {}), []);
   assert.equal(reviewRatings(history, {}, { minGames: 2 }).length, 1);
+});
+
+const groupGame = (id, result, enemy) => ({ id, playedAt: '2026-11-01T10:00:00.000Z', result, playedId: 'ling', topPickId: null, draft: { ally: [], enemy } });
+
+test('summarizeSkillGroups gives your record against each skill group, worst first', () => {
+  const groups = [
+    { id: 'blink', name: 'Blink', category: 'Movement', heroIds: ['harley', 'moskov'] },
+    { id: 'iframes', name: 'I-frames', category: 'Evasion', heroIds: ['lancelot'] },
+    { id: 'unused', name: 'Unused', category: 'Other', heroIds: ['nana'] },
+  ];
+  const summary = summarizeSkillGroups([
+    groupGame('a', 'win', ['harley', 'moskov', null]),
+    groupGame('b', 'loss', ['harley', 'lancelot']),
+    groupGame('c', 'loss', ['lancelot']),
+  ], groups);
+  assert.deepEqual(summary.map((item) => [item.group.id, item.games, item.wins, item.losses, item.winRate]), [
+    ['iframes', 2, 0, 2, 0],
+    ['blink', 2, 1, 1, 0.5],
+  ]);
+});
+
+test('summarizeSkillGroups has nothing to show without games', () => {
+  assert.deepEqual(summarizeSkillGroups([], [{ id: 'blink', name: 'Blink', category: 'Movement', heroIds: ['harley'] }]), []);
 });

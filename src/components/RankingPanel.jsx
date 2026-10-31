@@ -93,7 +93,7 @@ function TierView({ entries, viewedId, onSelect }) {
 }
 
 // Every available jungler with its viability score and risk, plus the junglers you can't play this draft.
-export default function RankingPanel({ scoring, enemySlots, viewedId, onSelect, onlyPool, setOnlyPool, hasPool, onOpenTierLists, takenLabels }) {
+export default function RankingPanel({ scoring, enemySlots, viewedId, onSelect, onlyPool, setOnlyPool, safeOnly, setSafeOnly, hasPool, onOpenTierLists, takenLabels }) {
     const [sortKey, setSortKey] = useState('viability');
     const [view, setView] = useState('list');
     const [role, setRole] = useState('All');
@@ -103,6 +103,15 @@ export default function RankingPanel({ scoring, enemySlots, viewedId, onSelect, 
     const query = compactName(search);
     const visible = sortEntries(scoring.ranked, sortKey, heroName)
         .filter((entry) => hasRole(entry.id, role) && (!query || compactName(heroName(entry.id)).includes(query)));
+
+    if (scoring.mode === 'waiting') {
+        return (
+            <section aria-label="All junglers" className="flex flex-col xl:h-full bg-ink-2 xl:border-l border-t xl:border-t-0 border-line">
+                <div className="p-3 border-b border-line"><span className="tab-cut">All junglers</span></div>
+                <p className="p-6 text-center text-sm text-fg-muted">Your junglers are ranked here once there's an enemy pick to score them against.</p>
+            </section>
+        );
+    }
 
     return (
         <section aria-label="All junglers" className="flex flex-col min-h-0 xl:h-full bg-ink-2 xl:border-l border-t xl:border-t-0 border-line">
@@ -114,10 +123,12 @@ export default function RankingPanel({ scoring, enemySlots, viewedId, onSelect, 
                 <div className="flex flex-wrap items-center gap-x-3 gap-y-2">
                     <Segmented label="Sort by" options={SORTS} value={sortKey} onChange={setSortKey} />
                 </div>
-                <div className="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-2">
-                    <SearchField value={search} onChange={setSearch} placeholder="Find a jungler" label="Find a jungler" />
+                <SearchField value={search} onChange={setSearch} placeholder="Find a jungler" label="Find a jungler" />
+                <div className="flex flex-wrap items-center gap-x-4">
+                    <Switch label="Safe picks" checked={safeOnly} onChange={setSafeOnly} title="Hide any jungler with a D against this lineup" />
                     <Switch label="My pool" checked={onlyPool && hasPool} disabled={!hasPool} onChange={setOnlyPool} title={hasPool ? 'Only rank junglers you gave a comfort rating' : 'Give a jungler a comfort rating to build your pool'} />
                 </div>
+                {safeOnly && scoring.hiddenCounters > 0 && <p className="text-xs text-fg-muted">Hiding {scoring.hiddenCounters} jungler{scoring.hiddenCounters === 1 ? '' : 's'} with a D against this lineup.</p>}
                 <div role="group" aria-label="Filter by role" className="flex gap-1 overflow-x-auto scrollbar-hide">
                     {['All', ...ROLES].map((option) => (
                         <button key={option} type="button" aria-pressed={role === option} onClick={() => setRole(role === option ? 'All' : option)} className="chip">{option}</button>
@@ -128,8 +139,10 @@ export default function RankingPanel({ scoring, enemySlots, viewedId, onSelect, 
             <div className="xl:flex-1 xl:min-h-0 xl:overflow-y-auto scroll-thin">
                 {scoring.ranked.length === 0 ? (
                     <div className="p-6 text-center text-sm text-fg-muted space-y-3">
-                        <p>{onlyPool && hasPool ? 'Nobody in your pool is still available. Turn off My pool to see everyone.' : 'All of your junglers are picked or banned.'}</p>
-                        <button type="button" onClick={onOpenTierLists} className="btn">Open tier lists</button>
+                        <p>{safeOnly && scoring.hiddenCounters > 0 ? 'Every available jungler has a D against this lineup. Turn off Safe picks to see them.' : onlyPool && hasPool ? 'Nobody in your pool is still available. Turn off My pool to see everyone.' : 'All of your junglers are picked or banned.'}</p>
+                        {safeOnly && scoring.hiddenCounters > 0
+                            ? <button type="button" onClick={() => setSafeOnly(false)} className="btn">Turn off Safe picks</button>
+                            : <button type="button" onClick={onOpenTierLists} className="btn">Open tier lists</button>}
                     </div>
                 ) : view === 'tiers' ? (
                     <TierView entries={visible} viewedId={viewedId} onSelect={onSelect} />

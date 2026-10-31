@@ -2,6 +2,7 @@
 // Plain functions that return new drafts, shared by the Draft screen and the tests.
 import { LANES } from '../data/heroes.js';
 import { COMFORT_WEIGHTS, DEFAULT_COMFORT_WEIGHT } from './scoring.js';
+import { DEFAULT_THEME, THEME_IDS } from '../data/themes.js';
 
 export const TEAM_SIZE = 5;
 export const BAN_OPTIONS = [0, 3, 4, 5];
@@ -24,6 +25,7 @@ export function createDraft({ bansPerTeam = 5, firstPick = 'ally' } = {}) {
     allyBans: emptySlots(bansPerTeam),
     enemyBans: emptySlots(bansPerTeam),
     enemyJungler: null,
+    lockedJungler: null,
   };
 }
 
@@ -57,6 +59,9 @@ export const setFirstPick = (draft, team) => ({ ...draft, firstPick: team });
 // Marks which enemy is their jungler; marking the same hero again clears it. Only you ever set this.
 export const toggleEnemyJungler = (draft, heroId) => ({ ...draft, enemyJungler: draft.enemyJungler === heroId ? null : heroId });
 
+// Locks in the jungler you're playing, which turns the sheet into their game plan. Null goes back to choosing.
+export const setLockedJungler = (draft, heroId) => ({ ...draft, lockedJungler: heroId || null });
+
 export const clearAllyPicks = (draft) => ({ ...draft, ally: emptySlots(TEAM_SIZE) });
 
 const isSameSlot = (a, b) => a.group === b.group && a.index === b.index;
@@ -75,6 +80,28 @@ export function moveBetweenSlots(draft, from, to) {
   writable(from.group)[from.index] = displaced;
   writable(to.group)[to.index] = moving;
   return keepEnemyJungler(next);
+}
+
+// The slot holding the hero added most recently and still there. Walks back through earlier versions of the
+// draft, and without any history falls back to the last filled slot.
+export function lastAddedSlot(draft, history = []) {
+  let newer = draft;
+  for (let step = history.length - 1; step >= 0; step -= 1) {
+    const older = history[step];
+    for (const group of GROUPS) {
+      for (let index = 0; index < newer[group].length; index += 1) {
+        const heroId = newer[group][index];
+        if (heroId && older[group][index] !== heroId && draft[group][index] === heroId) return { group, index };
+      }
+    }
+    newer = older;
+  }
+  for (const group of ['enemy', 'ally', 'enemyBans', 'allyBans']) {
+    for (let index = draft[group].length - 1; index >= 0; index -= 1) {
+      if (draft[group][index]) return { group, index };
+    }
+  }
+  return null;
 }
 
 // Teammates whose only lane is jungle. When one of them is picked, you probably aren't the one jungling.
@@ -153,8 +180,8 @@ export const isDraft = (value) =>
   isSlotList(value.allyBans, value.bansPerTeam) &&
   isSlotList(value.enemyBans, value.bansPerTeam);
 
-// Settings remembered between drafts: whether you also track your team, whether there's a ban phase, how many
-// bans each team gets, which team picks first, how much comfort counts, and whether only your pool is ranked.
+// Settings remembered between sessions: how drafts start (your team, bans, first pick), how scores and the list
+// work (comfort weight, your pool, safe picks), the color theme, and voice control (mic, language, taught words).
 export const DEFAULT_DRAFT_PREFERENCES = {
   enemyOnly: true,
   banPhase: true,
@@ -162,7 +189,16 @@ export const DEFAULT_DRAFT_PREFERENCES = {
   firstPick: 'ally',
   comfortWeight: DEFAULT_COMFORT_WEIGHT,
   onlyPool: false,
+  safeOnly: false,
+  theme: DEFAULT_THEME,
+  micDeviceId: '',
+  voiceLang: 'en-US',
+  voiceAliases: {},
 };
+
+const isOptional = (value, check) => value === undefined || check(value);
+const isBoolean = (value) => typeof value === 'boolean';
+const isTextMap = (value) => Boolean(value) && typeof value === 'object' && !Array.isArray(value) && Object.values(value).every((item) => typeof item === 'string');
 
 // Settings added later are optional, so preferences saved before them still load.
 export const isDraftPreferences = (value) =>
@@ -172,9 +208,14 @@ export const isDraftPreferences = (value) =>
   BAN_OPTIONS.includes(value.bansPerTeam) &&
   value.bansPerTeam > 0 &&
   (value.firstPick === 'ally' || value.firstPick === 'enemy') &&
-  (value.enemyOnly === undefined || typeof value.enemyOnly === 'boolean') &&
-  (value.onlyPool === undefined || typeof value.onlyPool === 'boolean') &&
-  (value.comfortWeight === undefined || COMFORT_WEIGHTS.includes(value.comfortWeight));
+  isOptional(value.enemyOnly, isBoolean) &&
+  isOptional(value.onlyPool, isBoolean) &&
+  isOptional(value.safeOnly, isBoolean) &&
+  isOptional(value.comfortWeight, (weight) => COMFORT_WEIGHTS.includes(weight)) &&
+  isOptional(value.theme, (theme) => THEME_IDS.includes(theme)) &&
+  isOptional(value.micDeviceId, (id) => typeof id === 'string') &&
+  isOptional(value.voiceLang, (lang) => typeof lang === 'string') &&
+  isOptional(value.voiceAliases, isTextMap);
 
 // Adds defaults for any setting missing from saved preferences, and drops settings that no longer exist.
 export const normalizeDraftPreferences = (preferences) =>

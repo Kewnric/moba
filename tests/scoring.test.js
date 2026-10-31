@@ -134,15 +134,34 @@ test('matchups carry where a rating came from and your notes', () => {
   assert.equal(fromHero.comment, 'Wait for ult');
 });
 
-test('with no enemy picks it ranks by your ratings against every open hero, and keeps no top pick hidden', () => {
+test('with no enemy picks there is nothing to rank and no top pick', () => {
   const result = scoreJunglers(context({
-    tiersByJungler: { ling: mine({ tigreal: 'S', miya: 'S', nana: 'S', saber: 'S', layla: 'S', karina: 'S', fanny: 'S' }) },
-    comfort: { ling: 3, fanny: 3 },
+    tiersByJungler: { ling: mine({ tigreal: 'S', miya: 'S' }) },
+    comfort: { ling: 5 },
   }));
-  assert.equal(result.mode, 'blind');
-  assert.equal(byId(result).ling.matchupScore, 100);
-  assert.equal(byId(result).fanny.matchupScore, 50);
-  assert.equal(result.top.id, 'ling');
+  assert.equal(result.mode, 'waiting');
+  assert.deepEqual(result.ranked, []);
+  assert.equal(result.top, null);
+});
+
+test('safe picks hides junglers with a D against the lineup, including from the top pick', () => {
+  const inputs = {
+    enemyIds: ['tigreal'],
+    tiersByJungler: { ling: mine({ tigreal: 'D' }), fanny: mine({ tigreal: 'C' }) },
+    comfort: { ling: 5, fanny: 1 },
+  };
+  const all = scoreJunglers(context({ ...inputs, comfortWeight: 90 }));
+  assert.equal(all.top.id, 'ling');
+  assert.equal(all.hiddenCounters, 0);
+  const safe = scoreJunglers(context({ ...inputs, comfortWeight: 90, safeOnly: true }));
+  assert.deepEqual(ids(safe), ['fanny']);
+  assert.equal(safe.top.id, 'fanny');
+  assert.equal(safe.hiddenCounters, 1);
+});
+
+test('a jungler you locked in can still be looked up when it is filtered out', () => {
+  const result = scoreJunglers(context({ enemyIds: ['tigreal'], tiersByJungler: { ling: mine({ tigreal: 'D' }) }, safeOnly: true }));
+  assert.ok(result.entries.some((entry) => entry.id === 'ling'));
 });
 
 test('heroes taken by the enemy or banned move to the unavailable list', () => {
@@ -158,7 +177,7 @@ test('ties go to the more comfortable jungler, then more ratings, then name', ()
 });
 
 test('only my pool keeps the junglers you gave a comfort rating', () => {
-  assert.deepEqual(ids(scoreJunglers(context({ comfort: { fanny: 3 }, onlyPool: true }))), ['fanny']);
+  assert.deepEqual(ids(scoreJunglers(context({ enemyIds: ['tigreal'], comfort: { fanny: 3 }, onlyPool: true }))), ['fanny']);
 });
 
 test('comfortScore maps 1 to 5 onto 0 to 100, and unset to the middle', () => {

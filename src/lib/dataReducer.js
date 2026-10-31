@@ -64,6 +64,17 @@ export function dataReducer(state, action) {
       return updateEntry(state, action.junglerId, action.enemyId, (entry) => ({ ...entry, tier: action.tier }));
     case 'clearTier':
       return updateEntry(state, action.junglerId, action.enemyId, (entry) => withoutKey(entry, 'tier'));
+    case 'setTiers':
+      if (!isTier(action.tier)) return state;
+      return action.enemyIds
+        .filter((enemyId) => enemyId !== action.junglerId)
+        .reduce((next, enemyId) => updateEntry(next, action.junglerId, enemyId, (entry) => ({ ...entry, tier: action.tier })), state);
+    case 'clearTiers':
+      return action.enemyIds.reduce((next, enemyId) => updateEntry(next, action.junglerId, enemyId, (entry) => withoutKey(entry, 'tier')), state);
+    case 'setNotes': {
+      const withTip = updateEntry(state, action.junglerId, action.enemyId, setText('quickNote', action.quickNote));
+      return updateEntry(withTip, action.junglerId, action.enemyId, setText('comment', action.comment));
+    }
     case 'setQuickNote':
       return updateEntry(state, action.junglerId, action.enemyId, setText('quickNote', action.text));
     case 'setComment':
@@ -137,6 +148,13 @@ export function dataReducer(state, action) {
           const inGroup = group.heroIds.includes(action.heroId);
           return { ...group, heroIds: inGroup ? group.heroIds.filter((id) => id !== action.heroId) : [...group.heroIds, action.heroId] };
         }),
+      };
+    case 'addGroupHeroes':
+      return {
+        ...state,
+        skillGroups: groupsOf(state).map((group) => (group.id === action.groupId
+          ? { ...group, heroIds: [...new Set([...group.heroIds, ...action.heroIds])] }
+          : group)),
       };
     case 'copyTierList': {
       if (action.fromId === action.toId) return state;

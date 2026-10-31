@@ -1,7 +1,8 @@
-import { useCallback, useEffect, useMemo, useReducer, useState } from 'react';
+import { useCallback, useEffect, useLayoutEffect, useMemo, useReducer, useRef, useState } from 'react';
 import { HEROES, HERO_BY_ID } from './data/heroes.js';
 import { DEFAULT_DRAFT_PREFERENCES, findAllyJunglers, isDraftPreferences, normalizeDraftPreferences } from './lib/draft.js';
-import { dataReducer } from './lib/dataReducer.js';
+import { initialUndoable, undoableDataReducer } from './lib/undoableData.js';
+import { normalizeSpeech, parseVoice } from './lib/voice.js';
 import { addGame, createGameRecord, mergeHistory, removeGame } from './lib/history.js';
 import { backupFileName, readBackupFile, serializeBackup } from './lib/backupFile.js';
 import {
@@ -17,9 +18,12 @@ import { allEffectiveTiers, categoriesOf, makeGroupId, withSkillData } from './l
 import { createSafeStorage } from './lib/storage.js';
 import { downloadFile } from './lib/files.js';
 import { useDraft } from './hooks/useDraft.js';
+import { useVoiceControl, voiceSupported } from './hooks/useVoiceControl.js';
 import { Icons } from './components/Icons.jsx';
 import { heroName } from './components/HeroAvatar.jsx';
-import { AddJunglerModal, ConfirmDialog, CopyTierListModal, ImportDialog, MatchupDialog, NewGroupModal } from './components/Modals.jsx';
+import { AddJunglerModal, ConfirmDialog, CopyTierListModal, ImportDialog, MatchupDialog, NewGroupModal, TeachVoiceModal } from './components/Modals.jsx';
+import ThemePicker from './components/ThemePicker.jsx';
+import VoiceBar from './components/VoiceBar.jsx';
 import DraftView from './views/DraftView.jsx';
 import TierListView from './views/TierListView.jsx';
 import SkillGroupsView from './views/SkillGroupsView.jsx';
@@ -65,7 +69,10 @@ const startupNotice = ({ problems, unmatched, addedJunglers }) => {
 
 export default function App() {
     const [startup] = useState(readStartupSave);
-    const [data, dispatch] = useReducer(dataReducer, startup.data);
+    const [undoable, dispatch] = useReducer(undoableDataReducer, startup.data, initialUndoable);
+    const data = undoable.present;
+    const undoLabel = undoable.past.length ? undoable.past[undoable.past.length - 1].label : null;
+    const undoData = useCallback(() => dispatch({ type: 'undo' }), []);
     const [history, setHistory] = useState(startup.history);
     const [notice, setNotice] = useState(() => startupNotice(startup));
     const [draftPreferences, setDraftPreferences] = useState(() => normalizeDraftPreferences(
@@ -76,7 +83,12 @@ export default function App() {
     const [view, setView] = useState('draft');
     const [editorJungler, setEditorJungler] = useState(null);
     const [editingGroupId, setEditingGroupId] = useState(null);
-    const [openMatchupId, setOpenMatchupId] = useState(null);
+    const [tierPage, setTierPage] = useState('board'); // board or comfort
+    const [openMatchup, setOpenMatchup] = useState(null); // { junglerId, enemyId }
+    const [themeMenuOpen, setThemeMenuOpen] = useState(false);
+    const [voiceOn, setVoiceOn] = useState(false);
+    const [voiceFeedback, setVoiceFeedback] = useState(null); // { heard, note, ok, canTeach }
+    const [teaching, setTeaching] = useState(null); // { phrase, apply }
     const [isAddingJungler, setIsAddingJungler] = useState(false);
     const [newJunglerId, setNewJunglerId] = useState('');
     const [isCopyingTiers, setIsCopyingTiers] = useState(false);
@@ -90,10 +102,31 @@ export default function App() {
         if (action === 'write') setNotice(WRITE_FAILED);
     }), []);
 
-    // Save after every change. The startup state is already what's stored, so it isn't written back.
-    useEffect(() => { if (data !== startup.data) storage.write(STORAGE_KEYS.data, data); }, [data, startup, storage]);
+    // Save after every change, including an undo that lands back on the data loaded at startup.
+    const savedData = useRef(startup.data);
+    useEffect(() => {
+        if (data === savedData.current) return;
+        storage.write(STORAGE_KEYS.data, data);
+        savedData.current = data;
+    }, [data, storage]);
     useEffect(() => { if (history !== startup.history) storage.write(STORAGE_KEYS.history, history); }, [history, startup, storage]);
     useEffect(() => { storage.write(STORAGE_KEYS.preferences, draftPreferences); }, [draftPreferences, storage]);
+
+    useLayoutEffect(() => { document.documentElement.dataset.theme = draftPreferences.theme; }, [draftPreferences.theme]);
+
+    // Ctrl+Z on the tier list and skill group screens. The draft screen undoes the draft instead.
+    useEffect(() => {
+        if (view !== 'tiers' && view !== 'skills') return undefined;
+        const handleKey = (e) => {
+            if (!(e.ctrlKey || e.metaKey) || e.shiftKey || e.key.toLowerCase() !== 'z') return;
+            const focused = document.activeElement;
+            if (document.querySelector('[role="dialog"]') || (focused && ['INPUT', 'TEXTAREA', 'SELECT'].includes(focused.tagName))) return;
+            e.preventDefault();
+            undoData();
+        };
+        window.addEventListener('keydown', handleKey);
+        return () => window.removeEventListener('keydown', handleKey);
+    }, [view, undoData]);
 
     const handleAddJungler = () => {
         if (!newJunglerId) return;
@@ -218,8 +251,9 @@ export default function App() {
         comfort,
         comfortWeight: draftPreferences.comfortWeight,
         onlyPool: draftPreferences.onlyPool && hasPool,
+        safeOnly: draftPreferences.safeOnly,
         heroIds: ALL_HERO_IDS,
-    }), [data.junglers, data.matchups, draft, takenIds, tiersByJungler, comfort, draftPreferences.comfortWeight, draftPreferences.onlyPool, hasPool]);
+    }), [data.junglers, data.matchups, draft, takenIds, tiersByJungler, comfort, draftPreferences.comfortWeight, draftPreferences.onlyPool, draftPreferences.safeOnly, hasPool]);
 
     const scoring = useMemo(() => scoreJunglers(scoringInputs), [scoringInputs]);
 
@@ -257,6 +291,65 @@ export default function App() {
         else dispatch({ type: 'setTier', junglerId, enemyId: matchup.enemyId, tier });
     };
 
+    // What was just said goes through the parser, then into the draft. Anything it can't use stays on screen,
+    // so a misheard name can be taught.
+    const handleVoiceResult = (alternatives) => {
+        const parsed = parseVoice(alternatives, { aliases: draftPreferences.voiceAliases });
+        if (parsed.ignored) {
+            setVoiceFeedback({ heard: parsed.heard, note: 'Not a hero or command.', ok: false, canTeach: true });
+            return;
+        }
+        if (parsed.actions.some((action) => action.type === 'stopVoice')) {
+            setVoiceOn(false);
+            return;
+        }
+        const results = draftState.applyVoice(parsed.actions.map((action) => (
+            action.type === 'lock' && !action.heroId ? { ...action, heroId: scoring.top ? scoring.top.id : null } : action
+        )));
+        setVoiceFeedback({ heard: parsed.heard, note: results.map((result) => result.note).join(' '), ok: results.every((result) => result.ok), canTeach: false });
+    };
+
+    const voiceListener = useVoiceControl({
+        enabled: voiceOn,
+        lang: draftPreferences.voiceLang,
+        micDeviceId: draftPreferences.micDeviceId,
+        onResult: handleVoiceResult,
+        onStop: () => setVoiceOn(false),
+    });
+
+    const voice = {
+        on: voiceOn,
+        setOn: (on) => {
+            voiceListener.clearError();
+            if (on) setVoiceFeedback(null);
+            setVoiceOn(on);
+        },
+        supported: voiceSupported(),
+        status: voiceListener.status,
+        interim: voiceListener.interim,
+        error: voiceListener.error,
+    };
+
+    const saveTaughtWord = (heroId) => {
+        const { phrase, apply } = teaching;
+        updateDraftPreferences({ voiceAliases: { ...draftPreferences.voiceAliases, [normalizeSpeech(phrase)]: heroId } });
+        if (apply) {
+            const [result] = draftState.applyVoice([{ type: 'pick', heroId, target: 'next' }]);
+            setVoiceFeedback({ heard: phrase, note: result.note, ok: result.ok, canTeach: false });
+        }
+        setTeaching(null);
+    };
+
+    const forgetWord = (phrase) => {
+        const { [phrase]: _forgotten, ...rest } = draftPreferences.voiceAliases;
+        updateDraftPreferences({ voiceAliases: rest });
+    };
+
+    const openComfort = () => {
+        setTierPage('comfort');
+        setView('tiers');
+    };
+
     const stats = useMemo(() => ({
         junglerCount: data.junglers.length,
         matchupCount: countRatings(data.matchups),
@@ -275,7 +368,7 @@ export default function App() {
         .map((id) => ({ id, name: heroName(id), rated: Object.keys(tiersByJungler[id] || {}).length }))
         .sort((a, b) => (b.rated - a.rated) || a.name.localeCompare(b.name));
 
-    const openNote = openMatchupId && editorJungler ? (data.matchups[editorJungler] || {})[openMatchupId] || {} : null;
+    const openNote = openMatchup ? (data.matchups[openMatchup.junglerId] || {})[openMatchup.enemyId] || {} : null;
 
     return (
         <div className="app-tone h-dvh w-full flex flex-col bg-ink text-fg">
@@ -293,6 +386,17 @@ export default function App() {
                             {view === id && <span className="absolute top-0 lg:top-auto lg:bottom-0 inset-x-0 h-[3px] bg-accent" aria-hidden="true" />}
                         </button>
                     ))}
+                </div>
+                <div className="hidden lg:block relative ml-auto">
+                    <button type="button" aria-expanded={themeMenuOpen} onClick={() => setThemeMenuOpen((open) => !open)} className="btn btn-quiet"><Icons.Palette size={16} /> Theme</button>
+                    {themeMenuOpen && (
+                        <>
+                            <button type="button" aria-label="Close theme menu" tabIndex={-1} className="fixed inset-0 z-40 cursor-default" onClick={() => setThemeMenuOpen(false)} />
+                            <div className="absolute right-0 top-full mt-2 z-50 w-80 panel p-2 animate-fadeIn">
+                                <ThemePicker compact value={draftPreferences.theme} onChange={(theme) => updateDraftPreferences({ theme })} />
+                            </div>
+                        </>
+                    )}
                 </div>
             </nav>
 
@@ -316,11 +420,17 @@ export default function App() {
                         allyJunglers={draftPreferences.enemyOnly ? [] : allyJunglers}
                         onlyPool={draftPreferences.onlyPool}
                         setOnlyPool={(on) => updateDraftPreferences({ onlyPool: on })}
+                        safeOnly={draftPreferences.safeOnly}
+                        setSafeOnly={(on) => updateDraftPreferences({ safeOnly: on })}
                         hasPool={hasPool}
                         onSetTier={setTierFromSheet}
                         onSetComfort={(junglerId, level) => dispatch({ type: 'setComfort', junglerId, comfort: level })}
                         onOpenTierLists={() => setView('tiers')}
+                        onOpenComfort={openComfort}
+                        onEditNotes={(junglerId, enemyId) => setOpenMatchup({ junglerId, enemyId })}
                         resultLog={{ lastRecord, onRecord: recordResult, onUndoRecord: undoRecord, onNewDraft: draftState.newDraft }}
+                        voice={voice}
+                        voiceBar={<VoiceBar voice={voice} feedback={voiceFeedback} micDeviceId={draftPreferences.micDeviceId} onTeach={(phrase) => setTeaching({ phrase, apply: true })} onOpenSettings={() => setView('settings')} />}
                     />
                 )}
                 {view === 'tiers' && (
@@ -328,13 +438,18 @@ export default function App() {
                         data={data}
                         tiersByJungler={tiersByJungler}
                         junglerId={editorJungler}
-                        setJunglerId={setEditorJungler}
+                        setJunglerId={(id) => { setEditorJungler(id); setTierPage('board'); }}
+                        page={tierPage}
+                        onOpenComfort={() => setTierPage((page) => (page === 'comfort' ? 'board' : 'comfort'))}
+                        comfortWeight={draftPreferences.comfortWeight}
+                        undoLabel={undoLabel}
+                        onUndo={undoData}
                         dispatch={dispatch}
                         onAddJungler={() => setIsAddingJungler(true)}
                         onRemoveJungler={handleDeleteJungler}
                         onCopyTierList={() => setIsCopyingTiers(true)}
                         onClearTierList={handleClearTierList}
-                        onOpenMatchup={setOpenMatchupId}
+                        onOpenMatchup={(enemyId) => setOpenMatchup({ junglerId: editorJungler, enemyId })}
                         onOpenSkills={() => setView('skills')}
                     />
                 )}
@@ -346,12 +461,15 @@ export default function App() {
                         dispatch={dispatch}
                         onNewGroup={() => setIsAddingGroup(true)}
                         onDeleteGroup={handleDeleteGroup}
+                        undoLabel={undoLabel}
+                        onUndo={undoData}
                     />
                 )}
                 {view === 'history' && (
                     <History
                         history={history}
                         tiersByJungler={tiersByJungler}
+                        skillGroups={data.skillGroups || []}
                         onDeleteGame={requestDeleteGame}
                         onSetTier={(junglerId, enemyId, tier) => dispatch({ type: 'setTier', junglerId, enemyId, tier })}
                         onOpenDraft={() => setView('draft')}
@@ -362,6 +480,9 @@ export default function App() {
                         preferences={draftPreferences}
                         onPreferencesChange={updateDraftPreferences}
                         onEnemyOnlyChange={draftState.setEnemyOnly}
+                        voice={voice}
+                        onTeach={(phrase) => setTeaching({ phrase, apply: false })}
+                        onForgetWord={forgetWord}
                         stats={stats}
                         onExport={handleExport}
                         onImport={handleImport}
@@ -370,23 +491,21 @@ export default function App() {
                 )}
             </main>
 
-            {openMatchupId && editorJungler && (
+            {openMatchup && (
                 <MatchupDialog
-                    key={`${editorJungler}|${openMatchupId}`}
-                    junglerName={heroName(editorJungler)}
-                    enemyName={heroName(openMatchupId)}
-                    enemyId={openMatchupId}
-                    rating={(tiersByJungler[editorJungler] || {})[openMatchupId] || null}
+                    key={`${openMatchup.junglerId}|${openMatchup.enemyId}`}
+                    junglerName={heroName(openMatchup.junglerId)}
+                    enemyName={heroName(openMatchup.enemyId)}
+                    enemyId={openMatchup.enemyId}
+                    rating={(tiersByJungler[openMatchup.junglerId] || {})[openMatchup.enemyId] || null}
                     note={openNote}
-                    onSetTier={(tier) => dispatch({ type: 'setTier', junglerId: editorJungler, enemyId: openMatchupId, tier })}
-                    onClearTier={() => dispatch({ type: 'clearTier', junglerId: editorJungler, enemyId: openMatchupId })}
-                    onSaveNotes={({ quickNote, comment }) => {
-                        dispatch({ type: 'setQuickNote', junglerId: editorJungler, enemyId: openMatchupId, text: quickNote });
-                        dispatch({ type: 'setComment', junglerId: editorJungler, enemyId: openMatchupId, text: comment });
-                    }}
-                    onClose={() => setOpenMatchupId(null)}
+                    onSetTier={(tier) => dispatch({ type: 'setTier', junglerId: openMatchup.junglerId, enemyId: openMatchup.enemyId, tier })}
+                    onClearTier={() => dispatch({ type: 'clearTier', junglerId: openMatchup.junglerId, enemyId: openMatchup.enemyId })}
+                    onSaveNotes={({ quickNote, comment }) => dispatch({ type: 'setNotes', junglerId: openMatchup.junglerId, enemyId: openMatchup.enemyId, quickNote, comment })}
+                    onClose={() => setOpenMatchup(null)}
                 />
             )}
+            {teaching && <TeachVoiceModal phrase={teaching.phrase} onSave={saveTaughtWord} onCancel={() => setTeaching(null)} />}
             {isAddingJungler && (
                 <AddJunglerModal options={addJunglerOptions} value={newJunglerId} onChange={setNewJunglerId} onCancel={() => { setIsAddingJungler(false); setNewJunglerId(''); }} onAdd={handleAddJungler} />
             )}

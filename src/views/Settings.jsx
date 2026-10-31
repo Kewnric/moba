@@ -1,6 +1,8 @@
 import { TIER_POINTS } from '../data/tiers.js';
 import { COMFORT_WEIGHTS, ENEMY_JUNGLER_WEIGHT } from '../lib/scoring.js';
 import { Icons } from '../components/Icons.jsx';
+import MicTester from '../components/MicTester.jsx';
+import ThemePicker from '../components/ThemePicker.jsx';
 import { Segmented, Switch } from '../components/ui.jsx';
 
 const BAN_COUNTS = [3, 4, 5];
@@ -27,11 +29,16 @@ function Section({ id, title, children, danger = false }) {
     );
 }
 
-export default function Settings({ preferences, onPreferencesChange, onEnemyOnlyChange, stats, onExport, onImport, onReset }) {
+export default function Settings({ preferences, onPreferencesChange, onEnemyOnlyChange, voice, onTeach, onForgetWord, stats, onExport, onImport, onReset }) {
     const comfort = preferences.comfortWeight;
     return (
         <div className="flex-1 min-h-0 overflow-y-auto scroll-thin p-3 lg:p-6 animate-fadeIn">
             <div className="max-w-3xl mx-auto space-y-4">
+                <Section id="settings-theme" title="Color theme">
+                    <p className="text-sm text-fg-muted mt-3 mb-3">Changes the whole app. Tier colors stay the same in every theme.</p>
+                    <ThemePicker value={preferences.theme} onChange={(theme) => onPreferencesChange({ theme })} />
+                </Section>
+
                 <Section id="settings-scoring" title="How scores work">
                     <p className="text-sm text-fg-muted mt-3">Viability is built only from your own tier lists and comfort. There are no win rates, no meta and no team-fit guesses, and risk never lowers a score.</p>
                     <ul className="text-sm text-fg-muted mt-2 space-y-1 list-disc pl-5">
@@ -45,6 +52,16 @@ export default function Settings({ preferences, onPreferencesChange, onEnemyOnly
                                 options={COMFORT_WEIGHTS.map((value) => ({ value, label: `${value}%` }))} />
                         </SettingRow>
                     </div>
+                </Section>
+
+                <Section id="settings-voice" title="Voice and mic">
+                    <div className="mt-3">
+                        <SettingRow title="Voice control" description="Say hero names to fill slots. It only acts when what you said is clearly a hero or a command, so normal talk is ignored.">
+                            <Switch label={voice.on ? 'On' : 'Off'} checked={voice.on} disabled={!voice.supported} onChange={voice.setOn} />
+                        </SettingRow>
+                    </div>
+                    {voice.error && <p role="alert" className="text-sm text-bad">{voice.error}</p>}
+                    <MicTester preferences={preferences} onPreferencesChange={onPreferencesChange} voiceOn={voice.on} onVoiceOff={() => voice.setOn(false)} onTeach={onTeach} onForgetWord={onForgetWord} />
                 </Section>
 
                 <Section id="settings-draft" title="New drafts">

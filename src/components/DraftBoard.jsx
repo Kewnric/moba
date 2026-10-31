@@ -78,7 +78,7 @@ function BanStrip({ draftState, drag, onSelect }) {
     );
 }
 
-export default function DraftBoard({ draftState, enemyOnly, defaultBanCount, drag, onSelectSlot, skills }) {
+export default function DraftBoard({ draftState, enemyOnly, defaultBanCount, drag, onSelectSlot, skills, voice, voiceBar }) {
     const { draft, activeSlot, canUndo } = draftState;
     const [showSettings, setShowSettings] = useState(false);
     const bansOn = draft.bansPerTeam > 0;
@@ -93,12 +93,15 @@ export default function DraftBoard({ draftState, enemyOnly, defaultBanCount, dra
 
     return (
         <>
+        {/* Always pinned while you scroll. On PC the controls stay with the slots; on phones only the slots do. */}
+        <div className="contents lg:block lg:sticky lg:top-0 lg:z-20">
         <div className="px-3 pt-3 lg:px-5 lg:pt-4 space-y-3 bg-ink-2">
             <div className="flex flex-wrap items-center justify-between gap-x-3 gap-y-1">
                 <span className="tab-cut tab-cut-enemy">Enemy lineup</span>
                 <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
                     <Switch label="Your team" checked={!enemyOnly} onChange={(on) => draftState.setEnemyOnly(!on)} title={enemyOnly ? 'Enemy-only draft. Turn on to also track your team.' : 'Turn off for an enemy-only draft.'} />
                     <Switch label="Bans" checked={bansOn} onChange={draftState.setBanPhase} title={bansOn ? 'Turn off the ban phase' : 'Turn on the ban phase'} />
+                    <Switch label="Voice" checked={voice.on} disabled={!voice.supported} onChange={voice.setOn} title={voice.supported ? 'Say hero names to fill slots' : 'Voice control needs Chrome or Edge'} />
                     <button type="button" onClick={() => setShowSettings((open) => !open)} aria-expanded={showSettings} aria-label="Draft settings" className="btn btn-quiet !px-2"><Icons.Sliders size={15} /></button>
                     <button type="button" onClick={draftState.undo} disabled={!canUndo} aria-label="Undo" title="Undo" className="btn btn-quiet !px-2"><Icons.RotateCcw size={15} /></button>
                     <button type="button" onClick={draftState.newDraft} className="btn !min-h-[2rem]">New</button>
@@ -119,12 +122,13 @@ export default function DraftBoard({ draftState, enemyOnly, defaultBanCount, dra
             )}
         </div>
 
-        {/* Only the enemy picks stay pinned, and only on screens tall enough to still show something below them. */}
-        <section aria-label="Draft board" className="[@media(max-width:1279px)_and_(min-height:700px)]:sticky top-0 z-20 px-3 py-3 lg:px-5 bg-ink-2">
+        <section aria-label="Draft board" className="sticky top-0 z-20 lg:static px-3 py-3 lg:px-5 bg-ink-2 border-b border-line">
             {team('enemy')}
+            {voiceBar}
         </section>
+        </div>
 
-        <div className="px-3 pb-3 lg:px-5 lg:pb-4 space-y-3 bg-ink-2 border-b border-line">
+        <div className={`px-3 lg:px-5 space-y-3 bg-ink-2 border-b border-line empty:hidden ${skills.length || bansOn || !enemyOnly ? 'py-3' : 'hidden'}`}>
             {skills.length > 0 && (
                 <div className="flex items-center gap-1.5 overflow-x-auto scrollbar-hide" aria-label="Skills in the enemy lineup">
                     <span className="label text-fg-faint shrink-0">They have</span>
